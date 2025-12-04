@@ -1,0 +1,62 @@
+{% extends 'admin/base_admin.html' %}
+
+{% block content %}
+<div class="layui-card">
+  <div class="layui-card-header">用户管理</div>
+  <div class="layui-card-body">
+    <form class="layui-form" action="{{ url_for('admin.add_user') }}" method="post" style="margin-bottom: 20px;">
+      <div class="layui-inline">
+        <input type="text" name="username" required lay-verify="required" placeholder="用户名" class="layui-input">
+      </div>
+      <div class="layui-inline">
+        <input type="password" name="password" required lay-verify="required" placeholder="密码" class="layui-input">
+      </div>
+      <div class="layui-inline">
+        <select name="role_id" lay-verify="required">
+          {% for role in roles %}
+          <option value="{{ role.id }}">{{ role.description }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="layui-inline">
+        <button class="layui-btn" lay-submit>添加用户</button>
+      </div>
+    </form>
+    
+    <table class="layui-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>用户名</th>
+          <th>角色</th>
+          <th>创建时间</th>
+          <th>操作</th>
+        </tr> 
+      </thead>
+      <tbody>
+        {% for user in users %}
+        <tr>
+          <td>{{ user.id }}</td>
+          <td>{{ user.username }}</td>
+          <td>{{ user.role.description if user.role else '无' }}</td>
+          <td>{{ user.created_at }}</td>
+          <td>
+            {% if user.username != 'admin' %}
+            <a href="{{ url_for('admin.delete_user', id=user.id) }}" class="layui-btn layui-btn-danger layui-btn-xs" onclick="return confirm('确定删除？')">删除</a>
+            {% else %}
+            <span class="layui-badge layui-bg-gray">不可删除</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<script>
+layui.use('form', function(){
+  var form = layui.form;
+  form.render();
+});
+</script>
+{% endblock %}

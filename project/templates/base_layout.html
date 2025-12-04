@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ site_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='layui-v2.13.2/css/layui.css') }}">
+  <style>
+    /* 全局深色科技风 */
+    html, body {
+        height: 100%;
+        overflow: hidden; /* 全局无滚动条 */
+    }
+    
+    body, .layui-layout-body {
+        background-color: #18202D;
+        color: #7C8B9F;
+        font-family: "Microsoft YaHei", sans-serif;
+    }
+    
+    /* 覆盖 Layui 默认样式 */
+    .layui-layout-admin .layui-header {
+      background-color: #1C2636;
+      border-bottom: 1px solid #2B384B;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      height: 50px; /* 头部高度减小 */
+      line-height: 50px;
+    }
+    
+    .layui-layout-admin .layui-logo {
+      width: 200px; /* 恢复宽度 */
+      color: #009BFF;
+      font-size: 16px;
+      font-weight: bold;
+      background-color: #1C2636;
+      box-shadow: none;
+      border-right: 1px solid #2B384B;
+      line-height: 50px; 
+    }
+    
+    .layui-header .layui-nav {
+        background: transparent;
+        padding: 0;
+        position: absolute;
+        right: 20px;
+        top: 0;
+    }
+
+    
+    .layui-header .layui-nav .layui-nav-item {
+        line-height: 50px; /* 导航项高度减小 */
+    }
+
+    .layui-header .layui-nav .layui-nav-item a {
+        color: #7C8B9F;
+        padding: 0 15px;
+    }
+    
+    .layui-header .layui-nav .layui-nav-item a:hover {
+        color: #fff;
+    }
+    
+    .layui-header .layui-nav-more {
+        display: none; /* 隐藏下拉箭头，保持简洁 */
+    }
+
+    /* 侧边栏 */
+    .layui-side {
+      width: 200px; /* 恢复宽度 */
+      background-color: #1C2636; 
+      border-right: 1px solid #2B384B;
+      top: 50px; 
+    }
+    
+    .layui-side.layui-bg-black {
+        background-color: #1C2636 !important;
+    }
+    
+    .layui-nav-tree {
+        background-color: transparent;
+        width: 200px; /* 恢复宽度 */
+    }
+    
+    .layui-nav-tree .layui-nav-item a {
+        color: #7C8B9F;
+        height: 40px;
+        line-height: 40px;
+        font-size: 13px; /* 字体稍微调回 */
+        padding-left: 20px; 
+    }
+    
+    .layui-nav-tree .layui-nav-item a i {
+        font-size: 14px;
+        margin-right: 5px;
+    }
+    
+    .layui-nav-tree .layui-nav-item a:hover {
+        background-color: rgba(0, 155, 255, 0.1);
+        color: #fff;
+    }
+    
+    .layui-nav-tree .layui-nav-child {
+        background-color: rgba(0,0,0,0.1) !important;
+    }
+    
+    .layui-nav-tree .layui-nav-child a {
+        padding-left: 30px; /* 调整缩进 */
+    }
+
+    /* 选中菜单样式 */
+    .layui-nav-tree .layui-nav-child dd.layui-this, 
+    .layui-nav-tree .layui-nav-child dd.layui-this a, 
+    .layui-nav-tree .layui-this, 
+    .layui-nav-tree .layui-this>a, 
+    .layui-nav-tree .layui-this>a:hover {
+        background-color: #009BFF !important;
+        color: #fff !important;
+        border-left: 3px solid #fff; /* 增加左侧选中条 */
+    }
+    
+    /* 侧边栏边框线 */
+    .layui-nav-itemed>a {
+        color: #fff !important;
+        font-size: 13px; /* 一级菜单字体稍大 */
+    }
+
+
+    /* 内容区域 */
+    .layui-body {
+      left: 200px; /* 适配侧边栏宽度 */
+      top: 50px; 
+      bottom: 0; 
+      background-color: #18202D;
+      padding: 20px;
+      color: #7C8B9F;
+      overflow-y: auto; 
+    }
+    
+    /* 底部 - 如果不需要固定底部，可以隐藏或调整 */
+    .layui-footer {
+      display: none; /* 隐藏底部，增加空旷感 */
+    }
+    
+    /* 顶部右侧用户信息 */
+    .user-info-panel {
+      display: flex;
+      align-items: center;
+      height: 50px;
+    }
+    .user-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      margin-right: 8px;
+      background-color: #2B384B;
+      border: 1px solid #3D4C61;
+    }
+    .user-name {
+        font-size: 12px;
+        margin-right: 15px;
+        color: #fff;
+    }
+    .logout-btn {
+        font-size: 12px;
+        color: #FF5722;
+        cursor: pointer;
+        padding: 2px 8px;
+        border: 1px solid #FF5722;
+        border-radius: 2px;
+        transition: all 0.3s;
+    }
+    .logout-btn:hover {
+        background-color: #FF5722;
+        color: #fff;
+    }
+    
+    /* 通用深色卡片 */
+    .layui-card {
+        background-color: #1C2636;
+        border: 1px solid #2B384B;
+        color: #7C8B9F;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .layui-card-header {
+        border-bottom: 1px solid #2B384B;
+        color: #fff;
+        font-size: 13px;
+    }
+    .layui-card-body {
+        color: #7C8B9F;
+    }
+    
+    /* 表格适配 */
+    .layui-table {
+        background-color: transparent;
+        color: #7C8B9F;
+    }
+    .layui-table thead tr {
+        background-color: #2B384B;
+    }
+    .layui-table td, .layui-table th {
+        border-color: #2B384B;
+        font-size: 12px;
+    }
+    .layui-table tbody tr:hover {
+        background-color: rgba(0, 155, 255, 0.05);
+    }
+    
+    /* 按钮适配 */
+    .layui-btn-primary {
+        border-color: #2B384B;
+        color: #7C8B9F;
+        background: transparent;
+    }
+    .layui-btn-primary:hover {
+        border-color: #009BFF;
+        color: #009BFF;
+    }
+    
+    /* 输入框适配 */
+    .layui-input, .layui-select, .layui-textarea {
+        background-color: #131924;
+        border-color: #2B384B;
+        color: #fff;
+        font-size: 12px;
+    }
+    .layui-input:focus, .layui-textarea:focus {
+        border-color: #009BFF !important;
+    }
+  </style>
+
+
+
+</head>
+<body class="layui-layout-body">
+<div class="layui-layout layui-layout-admin">
+  <!-- 顶部导航 -->
+  <div class="layui-header">
+    <div class="layui-logo">舆情分析系统</div>
+    <ul class="layui-nav layui-layout-right">
+      <li class="layui-nav-item">
+         <div class="user-info-panel">
+            <img src="https://unpkg.com/outeres@0.0.10/demo/avatar/0.png" class="user-avatar">
+            <span class="user-name">{{ current_user.username }}</span>
+            <a href="{{ url_for('auth.logout') }}" class="logout-btn">退出</a>
+         </div>
+      </li>
+    </ul>
+  </div>
+
+
+  
+  <!-- 侧边菜单 -->
+  <div class="layui-side layui-bg-black">
+    <div class="layui-side-scroll">
+      <ul class="layui-nav layui-nav-tree" lay-filter="test">
+        <li class="layui-nav-item layui-nav-itemed">
+          <a href="javascript:;">系统菜单</a>
+          <dl class="layui-nav-child">
+            <dd class="{% if request.endpoint == 'main.index' %}layui-this{% endif %}">
+              <a href="{{ url_for('main.index') }}">首页</a>
+            </dd>
+            {% if current_user.is_admin %}
+            <dd class="{% if request.endpoint == 'admin.index' %}layui-this{% endif %}">
+              <a href="{{ url_for('admin.index') }}">后台管理</a>
+            </dd>
+            <dd class="{% if request.endpoint == 'admin.users' %}layui-this{% endif %}">
+              <a href="{{ url_for('admin.users') }}">用户管理</a>
+            </dd>
+            <dd class="{% if request.endpoint == 'admin.settings' %}layui-this{% endif %}">
+              <a href="{{ url_for('admin.settings') }}">系统设置</a>
+            </dd>
+            {% endif %}
+          </dl>
+        </li>
+      </ul>
+    </div>
+  </div>
+  
+  <!-- 内容主体 -->
+  <div class="layui-body">
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="layui-alert layui-bg-blue" style="margin-bottom: 15px; padding: 10px;">
+          {{ messages[0] }}
+        </div>
+      {% endif %}
+    {% endwith %}
+    
+    {% block content %}{% endblock %}
+  </div>
+  
+  <!-- 底部固定区域 -->
+  <div class="layui-footer">
+    © 政企智能舆情分析报告生成智能体应用系统
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='layui-v2.13.2/layui.js') }}"></script>
+<script>
+  layui.use(['element', 'layer'], function(){
+    var element = layui.element;
+    var layer = layui.layer;
+  });
+</script>
+</body>
+</html>

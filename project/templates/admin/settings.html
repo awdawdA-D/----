@@ -1,0 +1,22 @@
+{% extends 'admin/base_admin.html' %}
+
+{% block content %}
+<div class="layui-card">
+  <div class="layui-card-header">系统设置</div>
+  <div class="layui-card-body">
+    <form class="layui-form" method="post">
+      <div class="layui-form-item">
+        <label class="layui-form-label">应用名称</label>
+        <div class="layui-input-block">
+          <input type="text" name="app_name" value="{{ app_name }}" required  lay-verify="required" placeholder="请输入应用名称" autocomplete="off" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <div class="layui-input-block">
+          <button class="layui-btn" lay-submit lay-filter="formDemo">保存设置</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

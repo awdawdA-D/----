@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>用户登录</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='layui-v2.13.2/css/layui.css') }}">
+  <style>
+    body {
+      background-color: #18202D;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 0;
+      font-family: "Microsoft YaHei", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    
+    /* 背景光效 */
+    .bg-glow-left {
+      position: fixed;
+      left: -10%;
+      top: 20%;
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(0,110,255,0.1) 0%, rgba(0,0,0,0) 70%);
+      pointer-events: none;
+    }
+    .bg-glow-right {
+      position: fixed;
+      right: -10%;
+      bottom: 20%;
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(0,110,255,0.1) 0%, rgba(0,0,0,0) 70%);
+      pointer-events: none;
+    }
+
+    .login-container {
+      width: 380px;
+      padding: 40px;
+      background: #1C2636;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+      border: 1px solid #2B384B;
+      position: relative;
+      z-index: 10;
+    }
+
+    .login-header {
+      text-align: center;
+      margin-bottom: 35px;
+    }
+    
+    .logo-icon-bg {
+      width: 60px;
+      height: 60px;
+      background: #162B44;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 15px;
+    }
+
+    .login-header h2 {
+      font-size: 20px;
+      font-weight: bold;
+      color: #fff;
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+    }
+
+    .login-header p {
+      color: #7C8B9F;
+      font-size: 12px;
+    }
+
+    /* 输入框样式重写 */
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-label {
+      display: block;
+      color: #9AA6B8;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .layui-input {
+      background-color: #131924;
+      border: 1px solid #2B384B;
+      color: #fff;
+      height: 42px;
+      border-radius: 4px;
+      padding-left: 40px;
+      transition: all 0.3s;
+    }
+    
+    .layui-input:hover {
+      border-color: #3D4C61;
+    }
+    
+    .layui-input:focus {
+      border-color: #009BFF;
+      background-color: #131924;
+    }
+
+    .layui-input::-webkit-input-placeholder {
+      color: #546274;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      color: #546274;
+      font-size: 16px;
+    }
+    
+    .input-suffix {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      color: #546274;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    /* 忘记密码 */
+    .forgot-link {
+      color: #009BFF;
+      font-size: 12px;
+      float: right;
+      margin-top: -30px; /* 提到密码label同一行 */
+      text-decoration: none;
+    }
+
+    /* 验证码 */
+    .captcha-box {
+      display: flex;
+      gap: 10px;
+    }
+    .captcha-img {
+      width: 110px;
+      height: 42px;
+      background: url('https://dummyimage.com/110x42/003344/00aaff&text=AB34') no-repeat center;
+      background-size: cover;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 1px solid #2B384B;
+      opacity: 0.8;
+    }
+
+    /* 记住我 - 自定义复选框 */
+    .layui-form-checkbox[lay-skin=primary] span {
+      color: #9AA6B8;
+      font-size: 12px;
+    }
+    .layui-form-checkbox[lay-skin=primary]:hover i {
+      border-color: #009BFF;
+    }
+    .layui-form-checked[lay-skin=primary] i {
+      border-color: #009BFF !important;
+      background-color: #009BFF;
+    }
+
+    /* 登录按钮 */
+    .login-btn {
+      width: 100%;
+      height: 42px;
+      line-height: 42px;
+      background: linear-gradient(90deg, #00A0FF 0%, #0080FF 100%);
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: bold;
+      color: #fff;
+      cursor: pointer;
+      margin-top: 10px;
+      transition: opacity 0.3s;
+    }
+    .login-btn:hover {
+      opacity: 0.9;
+    }
+    .login-btn i {
+      margin-right: 5px;
+    }
+
+    /* 其他登录方式 */
+    .other-login-divider {
+      border-top: 1px solid #2B384B;
+      margin: 25px 0 20px;
+      position: relative;
+      text-align: center;
+    }
+    .other-login-divider span {
+      background: #1C2636;
+      color: #546274;
+      padding: 0 10px;
+      font-size: 12px;
+      position: relative;
+      top: -8px;
+    }
+
+    .other-login-btns {
+      display: flex;
+      gap: 10px;
+    }
+    .other-btn {
+      flex: 1;
+      height: 36px;
+      line-height: 36px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid #2B384B;
+      border-radius: 4px;
+      color: #9AA6B8;
+      font-size: 12px;
+      text-align: center;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+    }
+    .other-btn:hover {
+      border-color: #009BFF;
+      color: #fff;
+    }
+    .other-btn i {
+      margin-right: 5px;
+      font-size: 14px;
+    }
+    
+    .other-btn.wechat i { color: #009BFF; }
+    .other-btn.mobile i { color: #25D366; }
+    .other-btn.qrcode i { color: #A569FF; }
+
+    /* 底部版权 */
+    .copyright {
+      position: fixed;
+      bottom: 30px;
+      text-align: center;
+      color: #546274;
+      font-size: 12px;
+      line-height: 1.8;
+    }
+  </style>
+</head>
+<body>
+
+<div class="bg-glow-left"></div>
+<div class="bg-glow-right"></div>
+
+<div class="login-container">
+  <div class="login-header">
+    <div class="logo-icon-bg">
+        <i class="layui-icon layui-icon-auz" style="font-size: 28px; color: #009BFF;"></i>
+    </div>
+    <h2>用户登录</h2>
+    <p>请输入您的账号信息</p>
+  </div>
+  
+  <form class="layui-form" action="{{ url_for('auth.login') }}" method="post">
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div style="color: #FF5722; text-align: center; margin-bottom: 15px; font-size: 12px;">
+          {{ messages[0] }}
+        </div>
+      {% endif %}
+    {% endwith %}
+    
+    <div class="form-group">
+      <label class="form-label">用户名</label>
+      <div style="position: relative;">
+        <i class="layui-icon layui-icon-username input-icon"></i>
+        <input type="text" name="username" required lay-verify="required" placeholder="请输入用户名" autocomplete="off" class="layui-input">
+      </div>
+    </div>
+    
+    <div class="form-group">
+      <label class="form-label">密码</label>
+      <a href="javascript:;" class="forgot-link">忘记密码?</a>
+      <div style="position: relative;">
+        <i class="layui-icon layui-icon-password input-icon"></i>
+        <input type="password" name="password" required lay-verify="required" placeholder="•••••" autocomplete="off" class="layui-input">
+        <i class="layui-icon layui-icon-eye-invisible input-suffix"></i>
+      </div>
+    </div>
+    
+    <div class="form-group">
+      <label class="form-label">验证码</label>
+      <div class="captcha-box">
+        <div style="position: relative; flex: 1;">
+           <i class="layui-icon layui-icon-vercode input-icon"></i>
+           <input type="text" name="captcha" placeholder="请输入验证码" autocomplete="off" class="layui-input">
+        </div>
+        <div class="captcha-img" title="点击更换"></div>
+      </div>
+    </div>
+    
+    <div class="form-group" style="margin-bottom: 25px;">
+      <input type="checkbox" name="remember" title="记住我" lay-skin="primary">
+    </div>
+    
+    <button class="login-btn" lay-submit lay-filter="login">
+      <i class="layui-icon layui-icon-release"></i> 安全登录
+    </button>
+  </form>
+  
+  <div class="other-login-divider">
+    <span>其他登录方式</span>
+  </div>
+  
+  <div class="other-login-btns">
+    <div class="other-btn wechat"><i class="layui-icon layui-icon-login-wechat"></i> 政务账号</div>
+    <div class="other-btn mobile"><i class="layui-icon layui-icon-cellphone"></i> 手机验证码</div>
+    <div class="other-btn qrcode"><i class="layui-icon layui-icon-code-circle"></i> 扫码登录</div>
+  </div>
+</div>
+
+<div class="copyright">
+  © 2023 数据要素与舆情分析平台 版权所有<br>政务信息化建设项目 - 安全等级：三级等保
+</div>
+
+<script src="{{ url_for('static', filename='layui-v2.13.2/layui.js') }}"></script>
+<script>
+  layui.use(['form'], function(){
+    var form = layui.form;
+  });
+</script>
+</body>
+</html>
