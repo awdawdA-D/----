@@ -12,7 +12,9 @@ def inject_settings():
 @bp.route('/')
 @login_required
 def index():
-    if current_user.is_admin:
-        return render_template('admin/index.html')
     return render_template('index.html')
 
+@bp.route('/daily')
+@login_required
+def daily():
+    return render_template('daily.html')

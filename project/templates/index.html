@@ -2,83 +2,24 @@
 
 {% block content %}
 <style>
-  .data-card {
-    background: linear-gradient(135deg, rgba(28,38,54,1) 0%, rgba(28,38,54,0.6) 100%);
-    border-radius: 4px;
-    padding: 25px;
-    border: 1px solid #2B384B;
-    position: relative;
-    overflow: hidden;
-    height: 100px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    transition: transform 0.3s;
-  }
-  .data-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-    border-color: #009BFF;
-  }
-  .data-card::after {
-    content: "";
-    position: absolute;
-    right: -20px;
-    bottom: -20px;
-    width: 100px;
-    height: 100px;
-    background: radial-gradient(circle, rgba(0,155,255,0.1) 0%, rgba(0,0,0,0) 70%);
-    border-radius: 50%;
-    pointer-events: none;
-  }
-  
-  .data-title {
-    font-size: 14px;
-    color: #7C8B9F;
-    margin-bottom: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
-  
-  .data-value {
-    font-size: 32px;
-    font-weight: bold;
-    color: #fff;
-    font-family: "Arial", sans-serif;
-  }
-  
-  .data-icon {
-    position: absolute;
-    right: 20px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 48px;
-    color: rgba(255,255,255,0.05);
-  }
-
-  .welcome-header {
-    margin-bottom: 30px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid #2B384B;
-    display: flex;
-    justify-content: space-between;
-    align-items: end;
-  }
-  .welcome-title {
-    font-size: 24px;
-    color: #fff;
-    font-weight: 300;
-  }
-  .welcome-subtitle {
-    font-size: 14px;
-    color: #546274;
-  }
+  .hero { max-width: 1024px; margin: 0 auto; padding-bottom: 24px; border-bottom: 1px solid #2B384B; display: flex; justify-content: space-between; align-items: end; }
+  .hero-title { font-size: 28px; color: #fff; font-weight: 300; }
+  .hero-sub { font-size: 14px; color: #546274; }
+  .section { max-width: 1024px; margin: 24px auto 0; }
+  .section-title { font-size: 18px; color: #fff; margin-bottom: 12px; }
+  .desc { color: #7C8B9F; line-height: 1.8; }
+  .feature-card { background: linear-gradient(135deg, rgba(28,38,54,1) 0%, rgba(28,38,54,0.6) 100%); border: 1px solid #2B384B; border-radius: 4px; padding: 20px; height: 140px; position: relative; }
+  .feature-title { color: #fff; font-size: 16px; margin-bottom: 8px; }
+  .feature-desc { color: #7C8B9F; font-size: 12px; }
+  .adv-card { background-color: #1C2636; border: 1px solid #2B384B; border-radius: 4px; padding: 16px; height: 120px; }
+  .adv-title { color: #fff; font-size: 15px; margin-bottom: 6px; }
+  .adv-desc { color: #7C8B9F; font-size: 12px; }
 </style>
 
-<div class="welcome-header">
+<div class="hero">
   <div>
-    <div class="welcome-title">仪表盘</div>
-    <div class="welcome-subtitle">DASHBOARD OVERVIEW</div>
+    <div class="hero-title">政企智能舆情分析系统</div>
+    <div class="hero-sub">基于 Flask + Layui 的深色科技风舆情平台，覆盖采集、分析、预警、报告全流程</div>
   </div>
   <div style="text-align: right;">
     <span class="layui-badge-dot layui-bg-blue"></span>
@@ -86,84 +27,47 @@
   </div>
 </div>
 
-<div class="layui-row layui-col-space20">
-  <div class="layui-col-md3">
-    <div class="data-card">
-      <div class="data-title">今日舆情总量</div>
-      <div class="data-value">8,542</div>
-      <i class="layui-icon layui-icon-chart data-icon"></i>
-    </div>
-  </div>
-  <div class="layui-col-md3">
-    <div class="data-card">
-      <div class="data-title">待处理预警</div>
-      <div class="data-value" style="color: #FF5722;">12</div>
-      <i class="layui-icon layui-icon-notice data-icon"></i>
-    </div>
-  </div>
-  <div class="layui-col-md3">
-    <div class="data-card">
-      <div class="data-title">生成报告数</div>
-      <div class="data-value">156</div>
-      <i class="layui-icon layui-icon-form data-icon"></i>
-    </div>
-  </div>
-  <div class="layui-col-md3">
-    <div class="data-card">
-      <div class="data-title">监控任务数</div>
-      <div class="data-value">32</div>
-      <i class="layui-icon layui-icon-website data-icon"></i>
-    </div>
+<div class="section">
+  <div class="section-title">系统简介</div>
+  <div class="desc">
+    面向政企场景的舆情监测与分析平台，提供多源数据采集、智能聚类与情感识别、事件级监控与预警、自动化日报周报生成与导出能力，支持可视化大屏与角色权限管理，助力快速构建覆盖全生命周期的舆情治理闭环。
   </div>
 </div>
 
-<div class="layui-row layui-col-space20" style="margin-top: 10px;">
-  <div class="layui-col-md8">
-    <div class="layui-card" style="height: 400px;">
-      <div class="layui-card-header">
-        实时舆情走势
-        <span class="layui-badge layui-bg-blue layui-layout-right" style="margin-top: 12px; margin-right: 15px;">实时</span>
-      </div>
-      <div class="layui-card-body" style="display: flex; align-items: center; justify-content: center; height: 340px;">
-        <div style="text-align: center; color: #2B384B;">
-          <i class="layui-icon layui-icon-chart-screen" style="font-size: 64px; opacity: 0.2;"></i>
-          <p style="margin-top: 10px; color: #546274;">图表区域占位符</p>
-        </div>
-      </div>
-    </div>
+<div class="section">
+  <div class="section-title">核心功能</div>
+  <div class="layui-row layui-col-space20">
+    <div class="layui-col-md3"><div class="feature-card"><div class="feature-title">多源采集</div><div class="feature-desc">支持关键词分页抓取，结构化提取标题、摘要、来源、封面与原始链接。</div></div></div>
+    <div class="layui-col-md3"><div class="feature-card"><div class="feature-title">主题聚类</div><div class="feature-desc">按话题与事件聚类，自动归档相关内容，减少重复与噪声。</div></div></div>
+    <div class="layui-col-md3"><div class="feature-card"><div class="feature-title">情感分析</div><div class="feature-desc">识别正向、负向与中性倾向，支持强度分级与趋势统计。</div></div></div>
+    <div class="layui-col-md3"><div class="feature-card"><div class="feature-title">事件监测</div><div class="feature-desc">对突发事件进行时序监控，支持关键词、来源与地域维度过滤。</div></div></div>
   </div>
-  <div class="layui-col-md4">
-    <div class="layui-card" style="height: 400px;">
-      <div class="layui-card-header">最新动态</div>
-      <div class="layui-card-body">
-        <ul class="layui-timeline">
-          <li class="layui-timeline-item">
-            <i class="layui-icon layui-timeline-axis"></i>
-            <div class="layui-timeline-content layui-text">
-              <div class="layui-timeline-title" style="color: #7C8B9F;">10:23 监测到新的负面舆情</div>
-            </div>
-          </li>
-          <li class="layui-timeline-item">
-            <i class="layui-icon layui-timeline-axis"></i>
-            <div class="layui-timeline-content layui-text">
-              <div class="layui-timeline-title" style="color: #7C8B9F;">09:45 系统自动生成日报</div>
-            </div>
-          </li>
-          <li class="layui-timeline-item">
-            <i class="layui-icon layui-timeline-axis"></i>
-            <div class="layui-timeline-content layui-text">
-              <div class="layui-timeline-title" style="color: #7C8B9F;">08:30 管理员登录系统</div>
-            </div>
-          </li>
-          <li class="layui-timeline-item">
-            <i class="layui-icon layui-timeline-axis"></i>
-            <div class="layui-timeline-content layui-text">
-              <div class="layui-timeline-title" style="color: #7C8B9F;">昨天 23:00 完成数据备份</div>
-            </div>
-          </li>
-        </ul>
-      </div>
-    </div>
+  <div class="layui-row layui-col-space20" style="margin-top: 10px;">
+    <div class="layui-col-md3"><div class="feature-card"><div class="feature-title">预警通知</div><div class="feature-desc">按阈值触发预警，支持按用户与角色推送消息与待办。</div></div></div>
+    <div class="layui-col-md3"><div class="feature-card"><div class="feature-title">报告生成</div><div class="feature-desc">自动生成日报、周报与专题报告，支持导出与分享。</div></div></div>
+    <div class="layui-col-md3"><div class="feature-card"><div class="feature-title">可视化大屏</div><div class="feature-desc">提供趋势、来源占比与话题热度等图表组件，支持定制布局。</div></div></div>
+    <div class="layui-col-md3"><div class="feature-card"><div class="feature-title">任务管理</div><div class="feature-desc">支持采集任务的创建、暂停与重试，提供任务运行日志。</div></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">产品优势</div>
+  <div class="layui-row layui-col-space20">
+    <div class="layui-col-md4"><div class="adv-card"><div class="adv-title">快速部署</div><div class="adv-desc">Flask + SQLite 与前端 Layui，轻量易部署，适合内网与最小可用。</div></div></div>
+    <div class="layui-col-md4"><div class="adv-card"><div class="adv-title">采集稳健</div><div class="adv-desc">结构化选择器与分页参数适配，稳定输出满足规模的数据集。</div></div></div>
+    <div class="layui-col-md4"><div class="adv-card"><div class="adv-title">安全合规</div><div class="adv-desc">角色与权限隔离，重要操作审计，可按策略限制敏感来源。</div></div></div>
+  </div>
+  <div class="layui-row layui-col-space20" style="margin-top: 10px;">
+    <div class="layui-col-md4"><div class="adv-card"><div class="adv-title">可扩展性</div><div class="adv-desc">模块化设计，采集、分析与展示均可按业务快速扩展。</div></div></div>
+    <div class="layui-col-md4"><div class="adv-card"><div class="adv-title">深色美学</div><div class="adv-desc">统一深色科技风，组件样式适配，支持大屏与多终端展示。</div></div></div>
+    <div class="layui-col-md4"><div class="adv-card"><div class="adv-title">低成本</div><div class="adv-desc">依赖少、资源省，适合政企试点与快速落地。</div></div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">应用场景</div>
+  <div class="desc">
+    政务舆情监测与预警、行业热点追踪、品牌口碑分析、突发事件研判与报告、宣传内容效果评估等。
   </div>
 </div>
 {% endblock %}

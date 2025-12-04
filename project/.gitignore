@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.sqlite*
+app.db
+debug_*.html
+.env/*
+!.env/.gitkeep

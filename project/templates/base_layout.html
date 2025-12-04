@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ site_name }}{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='layui-v2.13.2/css/layui.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='layui/css/layui.css') }}">
   <style>
     /* 全局深色科技风 */
     html, body {
@@ -260,6 +260,9 @@
             <dd class="{% if request.endpoint == 'main.index' %}layui-this{% endif %}">
               <a href="{{ url_for('main.index') }}">首页</a>
             </dd>
+            <dd class="{% if request.endpoint == 'main.daily' %}layui-this{% endif %}">
+              <a href="{{ url_for('main.daily') }}">每日舆情</a>
+            </dd>
             {% if current_user.is_admin %}
             <dd class="{% if request.endpoint == 'admin.index' %}layui-this{% endif %}">
               <a href="{{ url_for('admin.index') }}">后台管理</a>
@@ -296,7 +299,7 @@
   </div>
 </div>
 
-<script src="{{ url_for('static', filename='layui-v2.13.2/layui.js') }}"></script>
+<script src="{{ url_for('static', filename='layui/layui.js') }}"></script>
 <script>
   layui.use(['element', 'layer'], function(){
     var element = layui.element;
