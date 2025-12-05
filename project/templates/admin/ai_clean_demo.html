@@ -1,0 +1,65 @@
+{% extends 'base_layout.html' %}
+{% block content %}
+<div class="layui-card">
+  <div class="layui-card-header">AI数据清洗与分析 DEMO</div>
+  <div class="layui-card-body">
+    <div class="layui-form" style="margin-bottom:12px;display:flex;flex-direction:column;gap:10px;align-items:stretch">
+      <div>
+        <select id="engineSelect" class="layui-select" style="width:100%">
+          {% for e in engines %}
+          <option value="{{ e.id }}">{{ e.provider }} - {{ e.model_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <textarea id="instructionInput" class="layui-textarea" placeholder="分析指令" style="height:140px"></textarea>
+      <div style="display:flex;gap:10px">
+        <button id="runBtn" class="layui-btn layui-bg-blue">执行分析</button>
+        <button id="historyBtn" class="layui-btn layui-btn-primary">历史分析</button>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <div style="color:#64748B;font-size:12px">执行结果</div>
+      <a id="toggleBtn" href="javascript:;" style="font-size:12px">展开全部</a>
+    </div>
+    <div id="resultBox" style="white-space:pre-wrap;font-family:monospace;border:1px solid #e5e7eb;border-radius:4px;padding:10px;min-height:160px;font-size:13px;line-height:1.5;max-height:200px;overflow:auto"></div>
+    <div style="margin-top:14px;color:#64748B;font-size:12px">历史分析结果</div>
+    <div id="historyBox" style="border:1px solid #e5e7eb;border-radius:4px;padding:8px;min-height:80px"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+layui.use(['layer'], function(){
+  var layer = layui.layer;
+  document.getElementById('runBtn').addEventListener('click', function(){
+    var engineId = document.getElementById('engineSelect').value;
+    var instruction = document.getElementById('instructionInput').value.trim();
+    if(!instruction){ layer.msg('请填写分析指令'); return; }
+    var idx = layer.load(2);
+    fetch('{{ url_for('admin.ai_clean_demo_run') }}', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({engine_id: engineId, instruction: instruction})})
+      .then(function(r){ return r.json(); })
+      .then(function(resp){ layer.close(idx); if(resp.status!=='ok'){ layer.open({title:'执行失败', area:['720px','420px'], content: '<pre style="white-space:pre-wrap">'+ (resp.message||'失败') +'</pre>'}); return; } var txt='模型: '+ (resp.model||'') +'\n\n' + (resp.result_text||'');
+        function compactText(s){ try{ return String(s||'').replace(/\n{3,}/g,'\n\n').replace(/[ \t]{2,}/g,' '); }catch(e){ return s||''; } }
+        window.__ai_full_text = compactText(txt);
+        var box = document.getElementById('resultBox');
+        var toggler = document.getElementById('toggleBtn');
+        function renderCollapsed(){ var s = window.__ai_full_text || ''; var limit = 800; var view = s.length>limit ? (s.slice(0,limit) + '\n\n...') : s; box.textContent = view || '无结果'; toggler.textContent = (s.length>limit ? '展开全部' : ''); box.style.maxHeight = '200px'; }
+        function renderExpanded(){ box.textContent = window.__ai_full_text || '无结果'; toggler.textContent = '收起'; box.style.maxHeight = 'none'; }
+        renderCollapsed();
+        toggler.onclick = function(){ if(toggler.textContent==='展开全部'){ renderExpanded(); } else if(toggler.textContent==='收起'){ renderCollapsed(); } };
+      })
+      .catch(function(err){ layer.close(idx); layer.msg('调用失败'); });
+  });
+
+  document.getElementById('historyBtn').addEventListener('click', function(){
+    var idx = layer.load(2);
+    fetch('{{ url_for('admin.ai_clean_demo_history') }}?limit=20')
+      .then(function(r){ return r.json(); })
+      .then(function(resp){ layer.close(idx); var root = document.getElementById('historyBox'); root.innerHTML=''; if(resp.status!=='ok'){ root.textContent = '加载失败'; return; } var items = resp.items||[]; if(items.length===0){ root.textContent='暂无历史分析'; return; } items.forEach(function(it){ var wrap=document.createElement('div'); wrap.style.borderBottom='1px solid #eee'; wrap.style.padding='6px 2px'; var head=document.createElement('div'); head.style.fontSize='12px'; head.style.color='#334155'; head.textContent=(it.created_at||'')+' · '+(it.model||''); var instr=document.createElement('div'); instr.style.fontSize='12px'; instr.style.color='#64748B'; instr.textContent=(it.instruction||'').trim(); var body=document.createElement('div'); body.style.whiteSpace='pre-wrap'; body.style.fontFamily='monospace'; body.style.fontSize='13px'; body.style.lineHeight='1.5'; var full=(it.result_text||''); function compact(s){ try{ return String(s||'').replace(/\n{3,}/g,'\n\n').replace(/[ \t]{2,}/g,' ');}catch(e){return s||'';} } full=compact(full); var limit=600; var collapsed=full.length>limit ? (full.slice(0,limit)+'\n\n...') : full; body.textContent=collapsed; var togg=document.createElement('a'); togg.href='javascript:;'; togg.style.fontSize='12px'; togg.style.color='#2563EB'; togg.textContent= full.length>limit ? '展开全部' : ''; togg.onclick=function(){ if(togg.textContent==='展开全部'){ body.textContent=full; togg.textContent='收起'; } else { body.textContent=collapsed; togg.textContent='展开全部'; } }; wrap.appendChild(head); wrap.appendChild(instr); wrap.appendChild(body); wrap.appendChild(togg); root.appendChild(wrap); }); })
+      .catch(function(err){ layer.close(idx); document.getElementById('historyBox').textContent='加载失败'; });
+  });
+
+});
+</script>
+{% endblock %}

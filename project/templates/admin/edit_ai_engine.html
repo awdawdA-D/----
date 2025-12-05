@@ -25,6 +25,10 @@
       <input name="model_name" class="layui-input" value="{{ eng.model_name }}">
     </div>
     <div class="form-row">
+      <label>人设</label>
+      <textarea name="persona" class="layui-textarea" placeholder="输入AI人设描述">{{ eng.persona }}</textarea>
+    </div>
+    <div class="form-row">
       <button type="submit" class="layui-btn layui-bg-blue">保存</button>
       <a href="{{ url_for('admin.ai_engines') }}" class="layui-btn layui-btn-primary">返回</a>
     </div>

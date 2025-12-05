@@ -25,7 +25,7 @@ def create_app():
     login_manager.init_app(app)
 
     with app.app_context():
-        from .models import User, Role, SystemSetting, AiEngine
+        from .models import User, Role, SystemSetting, AiEngine, CrawlerSource
         db.create_all()
 
         try:
@@ -43,6 +43,15 @@ def create_app():
             if 'ai_analysis' in cols_cr:
                 with db.engine.begin() as conn:
                     conn.execute(text('ALTER TABLE collection_records DROP COLUMN ai_analysis'))
+        except Exception:
+            pass
+
+        try:
+            insp = inspect(db.engine)
+            cols_eng = [c['name'] if isinstance(c, dict) else c.get('name') for c in insp.get_columns('ai_engines')]
+            if 'persona' not in cols_eng:
+                with db.engine.begin() as conn:
+                    conn.execute(text('ALTER TABLE ai_engines ADD COLUMN persona TEXT'))
         except Exception:
             pass
         

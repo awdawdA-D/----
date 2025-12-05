@@ -69,4 +69,23 @@ class AiEngine(db.Model):
     api_base = db.Column(db.Text)
     api_key = db.Column(db.Text)
     model_name = db.Column(db.String(255))
+    persona = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class AiAnalysisResult(db.Model):
+    __tablename__ = 'ai_analysis_results'
+    id = db.Column(db.Integer, primary_key=True)
+    engine_id = db.Column(db.Integer)
+    ai_model_name = db.Column(db.String(255))
+    instruction = db.Column(db.Text)
+    result_text = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class CrawlerSource(db.Model):
+    __tablename__ = 'crawler_sources'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(128))
+    key = db.Column(db.String(64), unique=True, nullable=False)
+    enabled = db.Column(db.Boolean, default=True)
+    config_json = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

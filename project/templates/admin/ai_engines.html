@@ -59,15 +59,16 @@ layui.use(['layer','form'], function(){
       '  <div class="layui-form-item"><label class="layui-form-label">API地址</label><div class="layui-input-block"><input name="api_base" class="layui-input" placeholder="如：https://api.openai.com/v1" required></div></div>'+
       '  <div class="layui-form-item"><label class="layui-form-label">API密钥</label><div class="layui-input-block"><input name="api_key" class="layui-input" placeholder="以Bearer密钥形式"></div></div>'+
       '  <div class="layui-form-item"><label class="layui-form-label">模型名称</label><div class="layui-input-block"><input name="model_name" class="layui-input" placeholder="如：gpt-4o-mini"></div></div>'+
+      '  <div class="layui-form-item"><label class="layui-form-label">人设</label><div class="layui-input-block"><textarea name="persona" class="layui-textarea" placeholder="输入AI人设描述"></textarea></div></div>'+
       '  <div style="text-align:right; margin-top:10px">'+
       '    <button type="button" id="saveBtn" class="layui-btn layui-bg-blue">保存</button>'+ 
       '    <button type="button" class="layui-btn layui-btn-primary" onclick="layer.closeAll()">取消</button>'+ 
       '  </div>'+ 
       '</form>';
-    layer.open({title:'新增AI引擎', area:['720px','480px'], content: tpl});
+    layer.open({title:'新增AI引擎', area:['720px','560px'], content: tpl});
     setTimeout(function(){ form.render(); var btn=document.getElementById('saveBtn'); if(btn){ btn.addEventListener('click', function(){
       var f=document.getElementById('engForm');
-      var body=new URLSearchParams({provider: f.provider.value.trim(), api_base: f.api_base.value.trim(), api_key: f.api_key.value.trim(), model_name: f.model_name.value.trim()});
+      var body=new URLSearchParams({provider: f.provider.value.trim(), api_base: f.api_base.value.trim(), api_key: f.api_key.value.trim(), model_name: f.model_name.value.trim(), persona: f.persona.value.trim()});
       if(!f.api_base.value.trim()){ layer.msg('API地址不能为空'); return; }
       fetch("{{ url_for('admin.ai_engines_add') }}", {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString()})
         .then(function(){ layer.closeAll(); location.reload(); });

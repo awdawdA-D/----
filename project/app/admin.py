@@ -1,8 +1,8 @@
 from flask import Blueprint, render_template, request, flash, redirect, url_for, jsonify
 from flask_login import login_required, current_user
 from functools import wraps
-from .models import User, Role, SystemSetting, db, CollectionRecord, CollectionRule, AiEngine
-from .crawler import BaiduCrawler, XinhuaCrawler
+from .models import User, Role, SystemSetting, db, CollectionRecord, CollectionRule, AiEngine, CrawlerSource, AiAnalysisResult
+from .crawler import BaiduCrawler, XinhuaCrawler, create_crawler
 import re, json
 from urllib.parse import urlparse
 
@@ -136,6 +136,201 @@ def _normalize_api_base(base: str) -> str:
     except Exception:
         return base or ''
 
+def _choose_ai_engine():
+    try:
+        eng = AiEngine.query.order_by(AiEngine.id.asc()).first()
+        return eng
+    except Exception:
+        return None
+
+def _llm_chat_json(messages, temperature=0, engine_id=None):
+    eng = AiEngine.query.get(engine_id) if engine_id else _choose_ai_engine()
+    if not eng:
+        return {'error': '未配置AI引擎'}
+    import requests
+    base = _normalize_api_base((eng.api_base or '').strip())
+    url = base.rstrip('/') + '/chat/completions'
+    headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
+    key = (eng.api_key or '').strip()
+    if key:
+        headers['Authorization'] = 'Bearer ' + key
+        headers['x-api-key'] = key
+    msgs = list(messages)
+    if (eng.persona or '').strip():
+        persona_prompt = '你需要遵循以下人设：' + eng.persona.strip()
+        msgs = [{'role':'system','content': persona_prompt}] + msgs
+    payload = {
+        'model': (eng.model_name or '').strip() or 'gpt-3.5-turbo',
+        'temperature': temperature,
+        'response_format': { 'type': 'json_object' },
+        'messages': msgs,
+        'max_tokens': 512
+    }
+    try:
+        r = requests.post(url, headers=headers, data=json.dumps(payload), timeout=(10, 60))
+        if r.status_code != 200:
+            return {'error': f'LLM错误: {r.status_code}', 'preview': (r.text or '')[:160]}
+        data = r.json() or {}
+        content = (((data.get('choices') or [{}])[0]).get('message') or {}).get('content') or ''
+        if not content:
+            return {'error': 'LLM返回为空'}
+        try:
+            obj = json.loads(content)
+            return {'result': obj}
+        except Exception:
+            return {'error': '解析LLM JSON失败', 'raw': content[:500]}
+    except Exception as e:
+        return {'error': str(e)}
+
+def _llm_chat(messages, temperature=0, engine_id=None):
+    eng = AiEngine.query.get(engine_id) if engine_id else _choose_ai_engine()
+    if not eng:
+        return {'error': '未配置AI引擎'}
+    import requests
+    base = _normalize_api_base((eng.api_base or '').strip())
+    url = base.rstrip('/') + '/chat/completions'
+    headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
+    key = (eng.api_key or '').strip()
+    if key:
+        headers['Authorization'] = 'Bearer ' + key
+        headers['x-api-key'] = key
+    msgs = list(messages)
+    if (eng.persona or '').strip():
+        persona_prompt = '你需要遵循以下人设：' + eng.persona.strip()
+        msgs = [{'role':'system','content': persona_prompt}] + msgs
+    payload = {
+        'model': (eng.model_name or '').strip() or 'gpt-3.5-turbo',
+        'temperature': temperature,
+        'messages': msgs,
+        'max_tokens': 512
+    }
+    try:
+        r = requests.post(url, headers=headers, data=json.dumps(payload), timeout=(10, 60))
+        if r.status_code != 200:
+            return {'error': f'LLM错误: {r.status_code}', 'preview': (r.text or '')[:160]}
+        data = r.json() or {}
+        content = (((data.get('choices') or [{}])[0]).get('message') or {}).get('content') or ''
+        if not content:
+            return {'error': 'LLM返回为空'}
+        return {'result_text': content, 'model': (eng.model_name or '').strip(), 'engine_id': eng.id}
+    except Exception as e:
+        return {'error': str(e)}
+
+def _ai_tools_defs():
+    return [
+        {
+            'type': 'function',
+            'function': {
+                'name': 'get_table_schema',
+                'description': '获取collection_records表的字段信息',
+                'parameters': { 'type': 'object', 'properties': {}, 'required': [] }
+            }
+        },
+        {
+            'type': 'function',
+            'function': {
+                'name': 'select_collection_records',
+                'description': '查询collection_records，支持keyword模糊、最近days天与限制条数',
+                'parameters': {
+                    'type': 'object',
+                    'properties': {
+                        'keyword': { 'type': 'string' },
+                        'days': { 'type': 'integer' },
+                        'limit': { 'type': 'integer' }
+                    },
+                    'required': ['limit']
+                }
+            }
+        }
+    ]
+
+def _execute_tool_call(name, args):
+    try:
+        if name == 'get_table_schema':
+            return {
+                'table': 'collection_records',
+                'columns': ['id','keyword','title','summary','source','original_url','cover','deep_collected','deep_content','created_at']
+            }
+        if name == 'select_collection_records':
+            kw = (args or {}).get('keyword') or ''
+            days = int((args or {}).get('days') or 0)
+            limit = int((args or {}).get('limit') or 10)
+            base = CollectionRecord.query
+            if kw and kw.strip():
+                base = base.filter((CollectionRecord.title.ilike(f'%{kw}%')) | (CollectionRecord.summary.ilike(f'%{kw}%')))
+            if days and days > 0:
+                from datetime import datetime, timedelta
+                since = datetime.utcnow() - timedelta(days=days)
+                base = base.filter(CollectionRecord.created_at >= since)
+            rows = base.order_by(CollectionRecord.created_at.desc()).limit(min(max(limit,1), 50)).all()
+            items = []
+            for r in rows:
+                items.append({
+                    'id': r.id,
+                    'keyword': r.keyword,
+                    'title': r.title,
+                    'summary': (r.summary or ''),
+                    'source': r.source,
+                    'original_url': r.original_url,
+                    'created_at': r.created_at.isoformat() if r.created_at else ''
+                })
+            return { 'items': items }
+        return { 'error': f'未知工具: {name}' }
+    except Exception as e:
+        return { 'error': str(e) }
+
+def _llm_chat_with_tools(messages, temperature=0, engine_id=None, max_steps=3):
+    eng = AiEngine.query.get(engine_id) if engine_id else _choose_ai_engine()
+    if not eng:
+        return {'error': '未配置AI引擎'}
+    import requests
+    base = _normalize_api_base((eng.api_base or '').strip())
+    url = base.rstrip('/') + '/chat/completions'
+    headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
+    key = (eng.api_key or '').strip()
+    if key:
+        headers['Authorization'] = 'Bearer ' + key
+        headers['x-api-key'] = key
+    tools = _ai_tools_defs()
+    history = list(messages)
+    if (eng.persona or '').strip():
+        persona_prompt = '你需要遵循以下人设：' + eng.persona.strip()
+        history = [{'role':'system','content': persona_prompt}] + history
+    for _ in range(max_steps):
+        payload = {
+            'model': (eng.model_name or '').strip() or 'gpt-3.5-turbo',
+            'temperature': temperature,
+            'messages': history,
+            'tools': tools,
+            'tool_choice': 'auto',
+            'max_tokens': 512
+        }
+        try:
+            r = requests.post(url, headers=headers, data=json.dumps(payload), timeout=(10, 60))
+            if r.status_code != 200:
+                return {'error': f'LLM错误: {r.status_code}', 'preview': (r.text or '')[:200]}
+            data = r.json() or {}
+            msg = ((data.get('choices') or [{}])[0]).get('message') or {}
+            tool_calls = msg.get('tool_calls') or []
+            content = msg.get('content') or ''
+            history.append({'role':'assistant','content': content, 'tool_calls': tool_calls})
+            if tool_calls:
+                for tc in tool_calls:
+                    fn = (tc.get('function') or {})
+                    name = fn.get('name') or ''
+                    args_raw = fn.get('arguments') or '{}'
+                    try:
+                        args = json.loads(args_raw)
+                    except Exception:
+                        args = {}
+                    result = _execute_tool_call(name, args)
+                    history.append({'role':'tool','tool_call_id': tc.get('id') or '', 'content': json.dumps(result, ensure_ascii=False)})
+                continue
+            return {'result_text': content, 'model': (eng.model_name or '').strip(), 'engine_id': eng.id}
+        except Exception as e:
+            return {'error': str(e)}
+    return {'error': '超过工具调用步数限制'}
+
 @bp.route('/users')
 @login_required
 @admin_required
@@ -216,10 +411,11 @@ def ai_engines_add():
     api_base = (request.form.get('api_base') or '').strip()
     api_key = (request.form.get('api_key') or '').strip()
     model_name = (request.form.get('model_name') or '').strip()
+    persona = (request.form.get('persona') or '').strip()
     if not api_base:
         flash('API地址不能为空')
         return redirect(url_for('admin.ai_engines'))
-    eng = AiEngine(provider=provider, api_base=api_base, api_key=api_key, model_name=model_name)
+    eng = AiEngine(provider=provider, api_base=api_base, api_key=api_key, model_name=model_name, persona=persona)
     db.session.add(eng)
     db.session.commit()
     flash('AI引擎已添加')
@@ -235,6 +431,7 @@ def ai_engines_edit(id):
         eng.api_base = (request.form.get('api_base') or '').strip()
         eng.api_key = (request.form.get('api_key') or '').strip()
         eng.model_name = (request.form.get('model_name') or '').strip()
+        eng.persona = (request.form.get('persona') or '').strip()
         db.session.commit()
         flash('AI引擎已更新')
         return redirect(url_for('admin.ai_engines'))
@@ -257,17 +454,85 @@ def ai_engines_test(id):
     eng = AiEngine.query.get_or_404(id)
     import requests
     base = _normalize_api_base((eng.api_base or '').strip())
-    url = base.rstrip('/') + '/models'
+    url = base.rstrip('/') + '/chat/completions'
     headers = {'Accept': 'application/json'}
     if (eng.api_key or '').strip():
         headers['Authorization'] = 'Bearer ' + eng.api_key.strip()
         headers['x-api-key'] = eng.api_key.strip()
+    payload = {
+        'model': (eng.model_name or '').strip() or 'gpt-3.5-turbo',
+        'messages': [{'role':'user','content':'ping'}],
+        'max_tokens': 16,
+        'temperature': 0
+    }
     try:
-        r = requests.get(url, headers=headers, timeout=12)
+        r = requests.post(url, headers=headers, data=json.dumps(payload), timeout=(10, 30))
         ok = (r.status_code == 200)
         return jsonify({'status': 'ok' if ok else 'error', 'code': r.status_code, 'preview': (r.text or '')[:160]})
     except Exception as e:
         return jsonify({'status':'error','message':str(e)}), 502
+
+# AI 数据清洗与分析 DEMO
+@bp.route('/ai_clean_demo')
+@login_required
+@admin_required
+def ai_clean_demo():
+    engines = AiEngine.query.order_by(AiEngine.id.asc()).all()
+    return render_template('admin/ai_clean_demo.html', engines=engines)
+
+@bp.route('/ai_clean_demo/run', methods=['POST'])
+@login_required
+@admin_required
+def ai_clean_demo_run():
+    engine_id = None
+    instruction = ''
+    if request.is_json:
+        engine_id = request.json.get('engine_id')
+        instruction = (request.json.get('instruction') or '').strip()
+    else:
+        engine_id = request.form.get('engine_id')
+        instruction = (request.form.get('instruction') or '').strip()
+    if not instruction:
+        return jsonify({'status':'error','message':'分析指令不能为空'}), 400
+    sys_prompt = '你是一个面向舆情数据的中文分析助手。请根据指令，对sqlite数据表 collection_records 的内容进行分析与总结。无需提供SQL，只需要以清晰的中文输出分析结论。'
+    messages = [
+        {'role':'system','content': sys_prompt},
+        {'role':'user','content': instruction}
+    ]
+    resp = _llm_chat(messages, engine_id=engine_id)
+    if resp.get('error'):
+        return jsonify({'status':'error','message': resp.get('error'), 'preview': resp.get('preview')}), 502
+    text = resp.get('result_text') or ''
+    model_name = resp.get('model') or ''
+    eng_id = resp.get('engine_id') or (engine_id or 0)
+    rec = AiAnalysisResult(engine_id=eng_id, ai_model_name=model_name, instruction=instruction, result_text=text)
+    db.session.add(rec)
+    db.session.commit()
+    return jsonify({'status':'ok','model': model_name, 'result_text': text, 'saved_id': rec.id})
+
+@bp.route('/ai_clean_demo/history')
+@login_required
+@admin_required
+def ai_clean_demo_history():
+    try:
+        limit_raw = request.args.get('limit') or '10'
+        limit = int(limit_raw)
+    except Exception:
+        limit = 10
+    limit = min(max(limit, 1), 50)
+    rows = AiAnalysisResult.query.order_by(AiAnalysisResult.created_at.desc()).limit(limit).all()
+    items = []
+    for r in rows:
+        items.append({
+            'id': r.id,
+            'engine_id': r.engine_id,
+            'model': r.ai_model_name,
+            'instruction': r.instruction or '',
+            'result_text': r.result_text or '',
+            'created_at': r.created_at.isoformat() if r.created_at else ''
+        })
+    return jsonify({'status':'ok','count': len(items), 'items': items})
+
 
 @bp.route('/rules/add', methods=['POST'])
 @login_required
@@ -320,11 +585,99 @@ def delete_rule(id):
     flash('规则已删除')
     return redirect(url_for('admin.rules'))
 
+@bp.route('/crawlers')
+@login_required
+@admin_required
+def crawlers():
+    rows = CrawlerSource.query.order_by(CrawlerSource.id.asc()).all()
+    return render_template('admin/crawlers.html', crawlers=rows)
+
+@bp.route('/crawlers/add', methods=['POST'])
+@login_required
+@admin_required
+def crawlers_add():
+    name = (request.form.get('name') or '').strip()
+    key = (request.form.get('key') or '').strip()
+    enabled = bool(request.form.get('enabled'))
+    config_json = (request.form.get('config_json') or '').strip()
+    if not key:
+        flash('key 不能为空')
+        return redirect(url_for('admin.crawlers'))
+    row = CrawlerSource(name=name or key, key=key, enabled=enabled, config_json=config_json)
+    db.session.add(row)
+    db.session.commit()
+    flash('爬虫已添加')
+    return redirect(url_for('admin.crawlers'))
+
+@bp.route('/crawlers/edit/<int:id>', methods=['GET','POST'])
+@login_required
+@admin_required
+def crawlers_edit(id):
+    row = CrawlerSource.query.get_or_404(id)
+    if request.method == 'POST':
+        row.name = (request.form.get('name') or '').strip()
+        row.key = (request.form.get('key') or '').strip()
+        row.enabled = bool(request.form.get('enabled'))
+        row.config_json = (request.form.get('config_json') or '').strip()
+        db.session.commit()
+        flash('爬虫已更新')
+        return redirect(url_for('admin.crawlers'))
+    return render_template('admin/edit_crawler.html', row=row)
+
+@bp.route('/crawlers/delete/<int:id>')
+@login_required
+@admin_required
+def crawlers_delete(id):
+    row = CrawlerSource.query.get_or_404(id)
+    db.session.delete(row)
+    db.session.commit()
+    flash('爬虫已删除')
+    return redirect(url_for('admin.crawlers'))
+
+@bp.route('/crawlers/test/<int:id>')
+@login_required
+@admin_required
+def crawlers_test(id):
+    row = CrawlerSource.query.get_or_404(id)
+    cfg = None
+    try:
+        cfg = json.loads(row.config_json or '{}')
+    except Exception:
+        cfg = None
+    crawler = create_crawler(row.key, config=cfg)
+    try:
+        # 优先迭代获取以保证快速返回
+        iter_fn = getattr(crawler, 'iter_data', None)
+        items = []
+        test_kw = '新闻'
+        if callable(iter_fn):
+            for it in iter_fn(test_kw, max_count=3):
+                items.append(it)
+                if len(items) >= 3:
+                    break
+        else:
+            items = crawler.fetch_data(test_kw, max_count=3)
+        formatted = crawler.to_display_schema(items)
+        if not formatted:
+            raise Exception('未解析到任何数据，请检查配置选择器或接口路径')
+        return jsonify({'status':'ok','count':len(formatted), 'items': formatted})
+    except Exception as e:
+        return jsonify({'status':'error','message':str(e)}), 500
+
 @bp.route('/collector')
 @login_required
 @admin_required
 def collector():
-    return render_template('admin/collector.html')
+    rows = CrawlerSource.query.filter_by(enabled=True).order_by(CrawlerSource.id.asc()).all()
+    # ensure built-ins present
+    keys = set([r.key for r in rows])
+    extras = []
+    if 'baidu' not in keys:
+        extras.append(type('T', (), {'key':'baidu','name':'百度新闻'})())
+    if 'xinhua' not in keys:
+        extras.append(type('T', (), {'key':'xinhua','name':'新华网'})())
+    sources = list(rows) + extras
+    return render_template('admin/collector.html', sources=sources)
 
 @bp.route('/collector/run', methods=['POST'])
 @login_required
@@ -333,11 +686,15 @@ def collector_run():
     data = request.get_json() or {}
     keyword = data.get('keyword', '').strip()
     max_count = int(data.get('max_count') or 20)
-    source_name = (data.get('source') or 'baidu').lower()
-    if source_name == 'xinhua':
-        crawler = XinhuaCrawler()
-    else:
-        crawler = BaiduCrawler()
+    source_key = (data.get('source') or 'baidu').lower()
+    cfg = None
+    src = CrawlerSource.query.filter_by(key=source_key).first()
+    if src and (src.config_json or '').strip():
+        try:
+            cfg = json.loads(src.config_json)
+        except Exception:
+            cfg = None
+    crawler = create_crawler(source_key, config=cfg) or BaiduCrawler()
     items = crawler.fetch_data(keyword, max_count=max_count)
     formatted = crawler.to_display_schema(items)
     for it in formatted:
@@ -346,8 +703,84 @@ def collector_run():
         'progress': 100,
         'keyword': keyword,
         'items': formatted,
-        'source': source_name
+        'source': source_key
     })
+
+@bp.route('/collector/stream')
+@login_required
+@admin_required
+def collector_stream():
+    from flask import Response
+    keyword = (request.args.get('keyword') or '').strip()
+    max_count = int(request.args.get('max_count') or 20)
+    source_key = (request.args.get('source') or 'baidu').lower()
+    pace_ms = int(request.args.get('pace_ms') or 350)
+    if pace_ms < 0:
+        pace_ms = 0
+    cfg = None
+    src_row = CrawlerSource.query.filter_by(key=source_key).first()
+    if src_row and (src_row.config_json or '').strip():
+        try:
+            cfg = json.loads(src_row.config_json)
+        except Exception:
+            cfg = None
+    try:
+        crawler = create_crawler(source_key, config=cfg)
+    except Exception as e:
+        def _err():
+            yield f"event: error\ndata: {str(e)}\n\n"
+        return Response(_err(), headers={'Content-Type':'text/event-stream','Cache-Control':'no-cache','X-Accel-Buffering':'no','Connection':'keep-alive'})
+    def _gen():
+        try:
+            import time
+            sent = 0
+            yield f"event: status\ndata: 正在采集...\n\n"
+            # 优先使用迭代接口
+            iter_fn = getattr(crawler, 'iter_data', None)
+            if callable(iter_fn):
+                for it in iter_fn(keyword, max_count=max_count):
+                    try:
+                        formatted = crawler.to_display_schema([it])[0]
+                    except Exception:
+                        formatted = it
+                    formatted['deep_collected'] = False
+                    msg = json.dumps(formatted, ensure_ascii=False)
+                    yield f"event: status\ndata: 正在采集{formatted.get('title','')}\n\n"
+                    yield f"event: item\ndata: {msg}\n\n"
+                    sent += 1
+                    pct = max(0, min(99, round(100*sent/max_count)))
+                    yield f"event: progress\ndata: {pct}\n\n"
+                    if pace_ms:
+                        time.sleep(pace_ms/1000.0)
+                    if sent >= max_count:
+                        break
+            else:
+                items = crawler.fetch_data(keyword, max_count=max_count)
+                for it in items:
+                    try:
+                        formatted = crawler.to_display_schema([it])[0]
+                    except Exception:
+                        formatted = it
+                    formatted['deep_collected'] = False
+                    msg = json.dumps(formatted, ensure_ascii=False)
+                    yield f"event: status\ndata: 正在采集{formatted.get('title','')}\n\n"
+                    yield f"event: item\ndata: {msg}\n\n"
+                    sent += 1
+                    pct = max(0, min(99, round(100*sent/max_count)))
+                    yield f"event: progress\ndata: {pct}\n\n"
+                    if pace_ms:
+                        time.sleep(pace_ms/1000.0)
+            yield f"event: done\ndata: 已完成，共{sent}条\n\n"
+        except Exception as e:
+            err = str(e)
+            yield f"event: error\ndata: {err}\n\n"
+    headers = {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no',
+        'Connection': 'keep-alive'
+    }
+    return Response(_gen(), headers=headers)
 
 @bp.route('/collector/deep', methods=['POST'])
 @login_required

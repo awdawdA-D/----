@@ -1,0 +1,28 @@
+{% extends 'base_layout.html' %}
+{% block content %}
+<div style="max-width:720px;margin:0 auto">
+  <h2>编辑爬虫</h2>
+  <form method="post">
+    <div class="layui-form-item">
+      <label class="layui-form-label">名称</label>
+      <div class="layui-input-block"><input name="name" class="layui-input" value="{{ row.name }}"></div>
+    </div>
+    <div class="layui-form-item">
+      <label class="layui-form-label">key</label>
+      <div class="layui-input-block"><input name="key" class="layui-input" value="{{ row.key }}"></div>
+    </div>
+    <div class="layui-form-item">
+      <label class="layui-form-label">启用</label>
+      <div class="layui-input-block"><input type="checkbox" name="enabled" {% if row.enabled %}checked{% endif %}></div>
+    </div>
+    <div class="layui-form-item">
+      <label class="layui-form-label">配置JSON</label>
+      <div class="layui-input-block"><textarea name="config_json" class="layui-textarea" rows="8">{{ row.config_json }}</textarea></div>
+    </div>
+    <div class="layui-form-item">
+      <button type="submit" class="layui-btn layui-bg-blue">保存</button>
+      <a href="{{ url_for('admin.crawlers') }}" class="layui-btn layui-btn-primary">返回</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

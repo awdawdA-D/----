@@ -1,0 +1,65 @@
+{% extends 'base_layout.html' %}
+{% block content %}
+<style>
+  .content-wrapper{max-width:100%;padding:0 16px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .card{border:1px solid #e5e7eb;background:#fff;border-radius:6px;overflow:hidden}
+  .card-header{padding:12px 16px;font-weight:600;background:#f8fafc}
+  .card-body{padding:12px 16px;font-size:13px;color:#4b5563}
+  .actions{padding:12px 16px;border-top:1px dashed #e5e7eb;display:flex;gap:8px}
+  .toolbar{display:flex;justify-content:flex-end;margin:12px 0}
+</style>
+<div class="content-wrapper">
+  <h2>爬虫管理</h2>
+  <div class="toolbar">
+    <button id="addBtn" class="layui-btn layui-bg-blue">新增爬虫</button>
+  </div>
+  <div class="grid">
+    {% for c in crawlers %}
+    <div class="card">
+      <div class="card-header">{{ c.name }} <small style="color:#64748b">({{ c.key }})</small></div>
+      <div class="card-body">
+        <div>状态：{{ '启用' if c.enabled else '停用' }}</div>
+        <div>配置：<pre style="white-space:pre-wrap">{{ c.config_json or '{}' }}</pre></div>
+      </div>
+      <div class="actions">
+        <a href="{{ url_for('admin.crawlers_edit', id=c.id) }}" class="layui-btn layui-bg-green layui-btn-xs">编辑</a>
+        <a href="{{ url_for('admin.crawlers_delete', id=c.id) }}" class="layui-btn layui-btn-danger layui-btn-xs" onclick="return confirm('确定删除？')">删除</a>
+        <button class="layui-btn layui-btn-primary layui-btn-xs" onclick="testCrawler({{ c.id }})">检测</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+layui.use(['layer','form'], function(){
+  var layer = layui.layer, form = layui.form;
+  document.getElementById('addBtn').addEventListener('click', function(){
+    var html = ''+
+      '<form id="cForm" class="layui-form" style="padding:10px 16px">'+
+      '  <div class="layui-form-item"><label class="layui-form-label">名称</label><div class="layui-input-block"><input name="name" class="layui-input" placeholder="如：新华网"></div></div>'+
+      '  <div class="layui-form-item"><label class="layui-form-label">key</label><div class="layui-input-block"><input name="key" class="layui-input" placeholder="如：xinhua 或 baidu" required></div></div>'+
+      '  <div class="layui-form-item"><label class="layui-form-label">启用</label><div class="layui-input-block"><input type="checkbox" name="enabled" lay-skin="switch" lay-text="ON|OFF"></div></div>'+
+      '  <div class="layui-form-item"><label class="layui-form-label">配置JSON</label><div class="layui-input-block"><textarea name="config_json" class="layui-textarea" placeholder="{\"list_url\":\"https://sc.news.cn/scyw.htm\"}"></textarea></div></div>'+
+      '  <div style="text-align:right"><button type="button" id="saveBtn" class="layui-btn layui-bg-blue">保存</button></div>'+
+      '</form>';
+    layer.open({title:'新增爬虫', area:['720px','560px'], content: html});
+    setTimeout(function(){ form.render(); var btn=document.getElementById('saveBtn'); btn.onclick=function(){
+      var f=document.getElementById('cForm'); var data = new URLSearchParams({name:f.name.value.trim(), key:f.key.value.trim(), enabled:f.enabled.checked?'1':'', config_json:f.config_json.value});
+      fetch('{{ url_for('admin.crawlers_add') }}', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:data.toString()})
+        .then(function(){ layer.closeAll(); location.reload(); });
+    }; }, 50);
+  });
+});
+function testCrawler(id){
+  layui.layer.load(2);
+  fetch('{{ url_for('admin.crawlers_test', id=0) }}'.replace('0', String(id)))
+    .then(function(r){ return r.json(); })
+    .then(function(resp){ layui.layer.closeAll('loading'); var title = resp.status==='ok'?'检测成功':'检测失败'; var content = ''; if(resp.status==='ok'){ var items = resp.items||[]; content = '随机取样：\n\n' + items.map(function(it,i){ return '['+(i+1)+'] '+ (it.title||'') + '\n' + (it.original_url||''); }).join('\n\n'); } else { content = resp.message || '失败'; } layui.layer.open({title: title, area:['720px','420px'], content: '<pre style="white-space:pre-wrap">'+ content +'</pre>'}); })
+    .catch(function(){ layui.layer.closeAll('loading'); layui.layer.msg('检测失败'); });
+}
+</script>
+{% endblock %}

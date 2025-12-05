@@ -282,8 +282,14 @@
             <dd class="{% if request.endpoint == 'admin.rules' %}layui-this{% endif %}">
               <a href="{{ url_for('admin.rules') }}">采集规则库</a>
             </dd>
+            <dd class="{% if request.endpoint == 'admin.crawlers' %}layui-this{% endif %}">
+              <a href="{{ url_for('admin.crawlers') }}">爬虫管理</a>
+            </dd>
             <dd class="{% if request.endpoint == 'admin.ai_engines' %}layui-this{% endif %}">
               <a href="{{ url_for('admin.ai_engines') }}">AI引擎管理</a>
+            </dd>
+            <dd class="{% if request.endpoint == 'admin.ai_clean_demo' %}layui-this{% endif %}">
+              <a href="{{ url_for('admin.ai_clean_demo') }}">AI数据清洗分析管理</a>
             </dd>
             <dd class="{% if request.endpoint == 'admin.data_warehouse' %}layui-this{% endif %}">
               <a href="{{ url_for('admin.data_warehouse') }}">数据仓库管理</a>

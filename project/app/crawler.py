@@ -3,10 +3,33 @@ from bs4 import BeautifulSoup
 import random
 import time
 
+_CRAWLER_REGISTRY = {}
+
+def register_crawler(key, cls):
+    _CRAWLER_REGISTRY[key] = cls
+
+def create_crawler(key, config=None):
+    cls = _CRAWLER_REGISTRY.get(key)
+    if cls:
+        try:
+            return cls(config=config)
+        except TypeError:
+            return cls()
+    # fallback: unknown key
+    k = (key or '').strip().lower()
+    if k in ['sina','新浪','新浪网']:
+        return SinaCrawler(config=config)
+    if k in ['xinhua','新华','新华网','news.cn','xinhuanet']:
+        return XinhuaCrawler(config=config)
+    if k in ['ifeng','凤凰','凤凰网']:
+        return IfengCrawler(config=config)
+    raise ValueError(f"未注册的爬虫 key: {key}")
+
 class BaiduCrawler:
-    def __init__(self):
-        self.base_url = "https://www.baidu.com/s"
-        self.headers = {
+    def __init__(self, config=None):
+        cfg = config or {}
+        self.base_url = cfg.get('base_url') or "https://www.baidu.com/s"
+        self.headers = cfg.get('headers') or {
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
             "Accept-Encoding": "gzip, deflate",
             "Accept-Language": "zh-CN,zh;q=0.9",
@@ -90,6 +113,35 @@ class BaiduCrawler:
                 break
                 
         return all_results[:max_count]
+
+    def iter_data(self, keyword, max_count=30):
+        # 逐条迭代返回，便于SSE实时推送
+        if not (keyword or '').strip():
+            keyword = '新闻'
+        count = 0
+        page = 0
+        while count < max_count:
+            pn = page * 10
+            params = {"rtt":"1","bsst":"1","cl":"2","tn":"news","rsv_dl":"ns_pc","word":keyword,"pn":str(pn)}
+            try:
+                response = requests.get(self.base_url, headers=self.headers, params=params, timeout=10)
+                if response.status_code != 200:
+                    break
+                items = self.parse_html(response.text)
+                items = self.clean_results(items)
+                if not items:
+                    break
+                for it in items:
+                    yield it
+                    count += 1
+                    if count >= max_count:
+                        break
+            except Exception:
+                break
+            page += 1
+            time.sleep(random.uniform(1, 2))
+            if page >= 5:
+                break
 
     def parse_html(self, html_content):
         soup = BeautifulSoup(html_content, 'html.parser')
@@ -257,9 +309,10 @@ if __name__ == "__main__":
         print(f"    来源: {item['source']}")
         print("-" * 50)
 class XinhuaCrawler:
-    def __init__(self):
-        self.list_url = "https://sc.news.cn/scyw.htm"
-        self.headers = {
+    def __init__(self, config=None):
+        cfg = config or {}
+        self.list_url = cfg.get('list_url') or "https://sc.news.cn/scyw.htm"
+        self.headers = cfg.get('headers') or {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0 Safari/537.36",
             "Accept-Language": "zh-CN,zh;q=0.9"
         }
@@ -316,6 +369,65 @@ class XinhuaCrawler:
             return items[:max_count]
         except Exception:
             return []
+
+    def iter_data(self, keyword='', max_count=30):
+        # 逐条迭代返回，便于SSE实时推送
+        import requests, re
+        sent = 0
+        try:
+            # 频道列表优先
+            try:
+                r = requests.get(self.list_url, headers=self.headers, timeout=12)
+                if r.status_code == 200:
+                    raw = r.content
+                    enc = (r.encoding or '').lower()
+                    if not enc:
+                        m = re.search(rb'charset=([a-zA-Z0-9_-]+)', raw[:8192], re.I)
+                        if m:
+                            try:
+                                enc = m.group(1).decode('ascii', 'ignore').lower()
+                            except Exception:
+                                enc = ''
+                    html = ''
+                    for e in [enc, 'utf-8', 'gb18030', 'gbk', 'gb2312']:
+                        if not e:
+                            continue
+                        try:
+                            html = raw.decode(e, errors='ignore')
+                            break
+                        except Exception:
+                            continue
+                    if not html:
+                        html = raw.decode('utf-8', errors='ignore')
+                    parsed = self.parse_html(html)
+                    if keyword and keyword.strip():
+                        kw = keyword.strip()
+                        parsed = [it for it in parsed if (kw in it.get('title','')) or (kw in it.get('summary',''))]
+                    cleaned = self.clean_results(parsed)
+                    for it in cleaned:
+                        yield it
+                        sent += 1
+                        if sent >= max_count:
+                            return
+            except Exception:
+                pass
+            # 站点搜索补充
+            try:
+                bc = BaiduCrawler()
+                for it in bc.iter_data(f"site:news.cn {keyword}".strip(), max_count=max_count - sent):
+                    yield it
+                    sent += 1
+                    if sent >= max_count:
+                        return
+                for it in bc.iter_data(f"site:xinhuanet.com {keyword}".strip(), max_count=max_count - sent):
+                    yield it
+                    sent += 1
+                    if sent >= max_count:
+                        return
+            except Exception:
+                return
+        except Exception:
+            return
 
     def parse_html(self, html):
         from bs4 import BeautifulSoup
@@ -426,3 +538,339 @@ class XinhuaCrawler:
                 'summary': it.get('summary') or ''
             })
         return formatted
+
+# 注册内置爬虫
+register_crawler('baidu', BaiduCrawler)
+register_crawler('xinhua', XinhuaCrawler)
+class SinaCrawler:
+    def __init__(self, config=None):
+        cfg = config or {}
+        self.api = cfg.get('api') or 'https://feed.mix.sina.com.cn/api/roll/get'
+        self.pageid = int(cfg.get('pageid') or 153)
+        self.lid = int(cfg.get('lid') or 2509)
+        self.headers = cfg.get('headers') or {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0 Safari/537.36",
+            "Accept-Language": "zh-CN,zh;q=0.9"
+        }
+
+    def fetch_data(self, keyword='', max_count=30):
+        import requests
+        results = []
+        page = 1
+        kw = (keyword or '').strip()
+        try:
+            while len(results) < max_count and page <= 5:
+                params = {
+                    'pageid': str(self.pageid),
+                    'lid': str(self.lid),
+                    'num': str(min(50, max_count - len(results))),
+                    'page': str(page)
+                }
+                r = requests.get(self.api, headers=self.headers, params=params, timeout=12)
+                if r.status_code != 200:
+                    break
+                js = {}
+                try:
+                    js = r.json() or {}
+                except Exception:
+                    break
+                data = (js.get('result') or {}).get('data') or []
+                if not isinstance(data, list) or not data:
+                    break
+                for it in data:
+                    title = (it.get('title') or '').strip()
+                    intro = (it.get('intro') or '').strip()
+                    url = (it.get('url') or '').strip()
+                    # 放宽过滤：关键词命中标题或简介；无关键词不过滤
+                    if kw:
+                        if (kw not in title) and (kw not in intro):
+                            continue
+                    images = it.get('images') or []
+                    cover = ''
+                    if isinstance(images, list) and images:
+                        c = images[0]
+                        cover = (c.get('img_url') or '').strip()
+                    results.append({
+                        'title': title or '无标题',
+                        'summary': intro or '无概要',
+                        'cover': cover,
+                        'original_url': url,
+                        'source': (it.get('media_name') or '新浪网').strip() or '新浪网'
+                    })
+                    if len(results) >= max_count:
+                        break
+                page += 1
+        except Exception:
+            pass
+        cleaned = self.clean_results(results)
+        # 若频道未命中关键词或无数据，回退到站点搜索
+        if not cleaned:
+            try:
+                bc = BaiduCrawler()
+                cleaned = bc.fetch_data(f"site:sina.com.cn {kw}".strip(), max_count=max_count) or []
+            except Exception:
+                cleaned = []
+        return cleaned[:max_count]
+
+    def iter_data(self, keyword='', max_count=30):
+        import requests
+        count = 0
+        page = 1
+        kw = (keyword or '').strip()
+        try:
+            while count < max_count and page <= 5:
+                params = {
+                    'pageid': str(self.pageid),
+                    'lid': str(self.lid),
+                    'num': str(min(50, max_count - count)),
+                    'page': str(page)
+                }
+                r = requests.get(self.api, headers=self.headers, params=params, timeout=12)
+                if r.status_code != 200:
+                    break
+                js = {}
+                try:
+                    js = r.json() or {}
+                except Exception:
+                    break
+                data = (js.get('result') or {}).get('data') or []
+                if not isinstance(data, list) or not data:
+                    break
+                for it in data:
+                    title = (it.get('title') or '').strip()
+                    intro = (it.get('intro') or '').strip()
+                    if kw and (kw not in title) and (kw not in intro):
+                        continue
+                    images = it.get('images') or []
+                    cover = ''
+                    if isinstance(images, list) and images:
+                        c = images[0]
+                        cover = (c.get('img_url') or '').strip()
+                    yield {
+                        'title': title or '无标题',
+                        'summary': intro or '无概要',
+                        'cover': cover,
+                        'original_url': (it.get('url') or '').strip(),
+                        'source': (it.get('media_name') or '新浪网').strip() or '新浪网'
+                    }
+                    count += 1
+                    if count >= max_count:
+                        return
+                page += 1
+            # 若无数据，回退站点搜索
+            if count == 0:
+                try:
+                    bc = BaiduCrawler()
+                    for it in bc.iter_data(f"site:sina.com.cn {kw}".strip(), max_count=max_count):
+                        yield it
+                except Exception:
+                    return
+        except Exception:
+            return
+
+    def sanitize_text(self, text):
+        if not text:
+            return ''
+        t = str(text)
+        t = t.replace('\u200b','').replace('\u200c','').replace('\u200d','')
+        t = ' '.join(t.split())
+        return t.strip()
+
+    def is_noise_text(self, text):
+        if not text:
+            return True
+        t = self.sanitize_text(text)
+        if len(t) < 4:
+            return True
+        import re
+        valid = re.findall(r"[\u4e00-\u9fffA-Za-z0-9]", t)
+        ratio = (len(valid) / max(len(t), 1))
+        if ratio < 0.4:
+            return True
+        return False
+
+    def default_cover(self):
+        return 'https://dummyimage.com/242x162/18202D/ffffff&text=NEWS'
+
+    def clean_results(self, items):
+        cleaned = []
+        seen = set()
+        for it in items:
+            title = self.sanitize_text(it.get('title',''))
+            summary = self.sanitize_text(it.get('summary',''))
+            source = self.sanitize_text(it.get('source',''))
+            cover = (it.get('cover') or '').strip()
+            url = (it.get('original_url') or '').strip()
+            if self.is_noise_text(title):
+                continue
+            key = title.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            if not (url.startswith('http://') or url.startswith('https://')):
+                url = ''
+            if not (cover.startswith('http://') or cover.startswith('https://')):
+                cover = ''
+            if not cover:
+                cover = self.default_cover()
+            cleaned.append({
+                'title': title,
+                'summary': summary if not self.is_noise_text(summary) else '无概要',
+                'cover': cover,
+                'original_url': url,
+                'source': source or '新浪网'
+            })
+        return cleaned
+
+    def to_display_schema(self, items):
+        formatted = []
+        for it in items:
+            formatted.append({
+                'original_url': it.get('original_url') or '',
+                'cover': it.get('cover') or '',
+                'source': it.get('source') or '新浪网',
+                'title': it.get('title') or '',
+                'summary': it.get('summary') or ''
+            })
+        return formatted
+
+register_crawler('sina', SinaCrawler)
+
+def _resolve_final(url, headers=None):
+    try:
+        if not url:
+            return ''
+        import requests
+        r = requests.get(url, headers=headers or {}, timeout=8, allow_redirects=True)
+        return (r.url or url)
+    except Exception:
+        return url
+
+class IfengCrawler:
+    def __init__(self, config=None):
+        cfg = config or {}
+        self.headers = cfg.get('headers') or {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0 Safari/537.36",
+            "Accept-Language": "zh-CN,zh;q=0.9"
+        }
+
+    def fetch_data(self, keyword='', max_count=30):
+        import requests
+        from bs4 import BeautifulSoup
+        kw = (keyword or '').strip()
+        results = []
+        try:
+            if kw:
+                url = f"https://so.ifeng.com/?q={kw}"
+            else:
+                url = "https://news.ifeng.com/"
+            r = requests.get(url, headers=self.headers, timeout=12)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text or '', 'html.parser')
+                anchors = soup.select('a')
+                for a in anchors:
+                    href = (a.get('href') or '').strip()
+                    if not href:
+                        continue
+                    if 'ifeng.com' not in href:
+                        continue
+                    title = a.get_text(strip=True) or ''
+                    if not title or len(title) < 6:
+                        continue
+                    results.append({
+                        'title': title,
+                        'summary': '无概要',
+                        'cover': '',
+                        'original_url': href,
+                        'source': '凤凰网'
+                    })
+                    if len(results) >= max_count:
+                        break
+        except Exception:
+            results = []
+        if results:
+            return self.clean_results(results)[:max_count]
+        bc = BaiduCrawler({'headers': self.headers})
+        q = f"site:ifeng.com {keyword}".strip()
+        items = bc.fetch_data(q, max_count=max_count) or []
+        fixed = []
+        for it in items:
+            u = (it.get('original_url') or '').strip()
+            u2 = _resolve_final(u, headers=self.headers) if 'baidu.com' in u else u
+            src = '凤凰网' if 'ifeng.com' in (u2 or '') else (it.get('source') or '凤凰网')
+            fixed.append({
+                'title': it.get('title') or '',
+                'summary': it.get('summary') or '无概要',
+                'cover': it.get('cover') or '',
+                'original_url': u2,
+                'source': src
+            })
+            if len(fixed) >= max_count:
+                break
+        return bc.clean_results(fixed)[:max_count]
+
+    def iter_data(self, keyword='', max_count=30):
+        import requests
+        from bs4 import BeautifulSoup
+        kw = (keyword or '').strip()
+        count = 0
+        try:
+            if kw:
+                url = f"https://so.ifeng.com/?q={kw}"
+            else:
+                url = "https://news.ifeng.com/"
+            r = requests.get(url, headers=self.headers, timeout=12)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text or '', 'html.parser')
+                anchors = soup.select('a')
+                for a in anchors:
+                    href = (a.get('href') or '').strip()
+                    if not href:
+                        continue
+                    if 'ifeng.com' not in href:
+                        continue
+                    title = a.get_text(strip=True) or ''
+                    if not title or len(title) < 6:
+                        continue
+                    yield {
+                        'title': title,
+                        'summary': '无概要',
+                        'cover': '',
+                        'original_url': href,
+                        'source': '凤凰网'
+                    }
+                    count += 1
+                    if count >= max_count:
+                        return
+        except Exception:
+            pass
+        bc = BaiduCrawler({'headers': self.headers})
+        q = f"site:ifeng.com {keyword}".strip()
+        for it in bc.iter_data(q, max_count=max_count - count):
+            u = (it.get('original_url') or '').strip()
+            u2 = _resolve_final(u, headers=self.headers) if 'baidu.com' in u else u
+            src = '凤凰网' if 'ifeng.com' in (u2 or '') else (it.get('source') or '凤凰网')
+            yield {
+                'title': it.get('title') or '',
+                'summary': it.get('summary') or '无概要',
+                'cover': it.get('cover') or '',
+                'original_url': u2,
+                'source': src
+            }
+            count += 1
+            if count >= max_count:
+                return
+
+    def to_display_schema(self, items):
+        formatted = []
+        for it in items:
+            formatted.append({
+                'original_url': it.get('original_url') or '',
+                'cover': it.get('cover') or '',
+                'source': it.get('source') or '凤凰网',
+                'title': it.get('title') or '',
+                'summary': it.get('summary') or ''
+            })
+        return formatted
+
+register_crawler('ifeng', IfengCrawler)
