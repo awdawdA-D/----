@@ -263,9 +263,6 @@
             <dd class="{% if request.endpoint == 'main.index' %}layui-this{% endif %}">
               <a href="{{ url_for('main.index') }}">首页</a>
             </dd>
-            <dd class="{% if request.endpoint == 'main.daily' %}layui-this{% endif %}">
-              <a href="{{ url_for('main.daily') }}">每日舆情</a>
-            </dd>
             {% if current_user.is_admin %}
             <dd class="{% if request.endpoint == 'admin.index' %}layui-this{% endif %}">
               <a href="{{ url_for('admin.index') }}">后台管理</a>
@@ -284,6 +281,9 @@
             </dd>
             <dd class="{% if request.endpoint == 'admin.crawlers' %}layui-this{% endif %}">
               <a href="{{ url_for('admin.crawlers') }}">爬虫管理</a>
+            </dd>
+            <dd class="{% if request.endpoint == 'admin.dashboard' %}layui-this{% endif %}">
+              <a href="{{ url_for('admin.dashboard') }}">数据大屏</a>
             </dd>
             <dd class="{% if request.endpoint == 'admin.ai_engines' %}layui-this{% endif %}">
               <a href="{{ url_for('admin.ai_engines') }}">AI引擎管理</a>

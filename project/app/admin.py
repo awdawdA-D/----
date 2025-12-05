@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, flash, redirect, url_for, jsonify
+from flask import Blueprint, render_template, request, flash, redirect, url_for, jsonify, current_app
 from flask_login import login_required, current_user
 from functools import wraps
 from .models import User, Role, SystemSetting, db, CollectionRecord, CollectionRule, AiEngine, CrawlerSource, AiAnalysisResult
@@ -138,6 +138,17 @@ def _normalize_api_base(base: str) -> str:
 
 def _choose_ai_engine():
     try:
+        # 优先读取系统设置中的默认引擎ID
+        setting = SystemSetting.query.filter_by(key='default_ai_engine_id').first()
+        if setting and (setting.value or '').strip():
+            try:
+                eid = int((setting.value or '').strip())
+                eng = AiEngine.query.get(eid)
+                if eng:
+                    return eng
+            except Exception:
+                pass
+        # 兜底：使用第一个引擎
         eng = AiEngine.query.order_by(AiEngine.id.asc()).first()
         return eng
     except Exception:
@@ -186,35 +197,59 @@ def _llm_chat(messages, temperature=0, engine_id=None):
     eng = AiEngine.query.get(engine_id) if engine_id else _choose_ai_engine()
     if not eng:
         return {'error': '未配置AI引擎'}
-    import requests
-    base = _normalize_api_base((eng.api_base or '').strip())
-    url = base.rstrip('/') + '/chat/completions'
-    headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
-    key = (eng.api_key or '').strip()
-    if key:
-        headers['Authorization'] = 'Bearer ' + key
-        headers['x-api-key'] = key
-    msgs = list(messages)
-    if (eng.persona or '').strip():
-        persona_prompt = '你需要遵循以下人设：' + eng.persona.strip()
-        msgs = [{'role':'system','content': persona_prompt}] + msgs
-    payload = {
-        'model': (eng.model_name or '').strip() or 'gpt-3.5-turbo',
-        'temperature': temperature,
-        'messages': msgs,
-        'max_tokens': 512
-    }
+    import requests, time
+    candidates = [eng]
     try:
-        r = requests.post(url, headers=headers, data=json.dumps(payload), timeout=(10, 60))
-        if r.status_code != 200:
-            return {'error': f'LLM错误: {r.status_code}', 'preview': (r.text or '')[:160]}
-        data = r.json() or {}
-        content = (((data.get('choices') or [{}])[0]).get('message') or {}).get('content') or ''
-        if not content:
-            return {'error': 'LLM返回为空'}
-        return {'result_text': content, 'model': (eng.model_name or '').strip(), 'engine_id': eng.id}
-    except Exception as e:
-        return {'error': str(e)}
+        backup = AiEngine.query.filter(AiEngine.id != eng.id).order_by(AiEngine.id.asc()).first()
+        if backup:
+            candidates.append(backup)
+    except Exception:
+        pass
+    last_err = None
+    for chosen in candidates:
+        base = _normalize_api_base((chosen.api_base or '').strip())
+        url = base.rstrip('/') + '/chat/completions'
+        headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
+        key = (chosen.api_key or '').strip()
+        if key:
+            headers['Authorization'] = 'Bearer ' + key
+            headers['x-api-key'] = key
+        msgs = list(messages)
+        if (chosen.persona or '').strip():
+            persona_prompt = '你需要遵循以下人设：' + chosen.persona.strip()
+            msgs = [{'role':'system','content': persona_prompt}] + msgs
+        payload = {
+            'model': (chosen.model_name or '').strip() or 'gpt-3.5-turbo',
+            'temperature': temperature,
+            'messages': msgs,
+            'max_tokens': 512
+        }
+        last_txt = ''
+        last_code = 0
+        for i in range(3):
+            try:
+                r = requests.post(url, headers=headers, data=json.dumps(payload), timeout=(10, 60))
+                if r.status_code == 200:
+                    data = r.json() or {}
+                    content = (((data.get('choices') or [{}])[0]).get('message') or {}).get('content') or ''
+                    if not content:
+                        last_err = {'error': 'LLM返回为空'}
+                        break
+                    return {'result_text': content, 'model': (chosen.model_name or '').strip(), 'engine_id': chosen.id}
+                txt = (r.text or '')
+                last_txt = txt
+                last_code = r.status_code
+                busy = ('50603' in txt) or ('busy' in txt.lower()) or (r.status_code in (429, 503))
+                if not busy:
+                    last_err = {'error': f'LLM错误: {r.status_code}', 'preview': txt[:160]}
+                    break
+                time.sleep(1 + i)
+            except Exception as e:
+                last_err = {'error': str(e)}
+                time.sleep(1)
+        if not last_err and (last_code in (429, 503) or ('50603' in (last_txt or '').lower()) or ('busy' in (last_txt or '').lower())):
+            last_err = {'error': 'LLM繁忙', 'preview': (last_txt or '')[:160], 'code': last_code}
+    return last_err or {'error': 'LLM未知错误'}
 
 def _ai_tools_defs():
     return [
@@ -283,52 +318,70 @@ def _llm_chat_with_tools(messages, temperature=0, engine_id=None, max_steps=3):
     eng = AiEngine.query.get(engine_id) if engine_id else _choose_ai_engine()
     if not eng:
         return {'error': '未配置AI引擎'}
-    import requests
-    base = _normalize_api_base((eng.api_base or '').strip())
-    url = base.rstrip('/') + '/chat/completions'
-    headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
-    key = (eng.api_key or '').strip()
-    if key:
-        headers['Authorization'] = 'Bearer ' + key
-        headers['x-api-key'] = key
+    import requests, time
     tools = _ai_tools_defs()
     history = list(messages)
-    if (eng.persona or '').strip():
-        persona_prompt = '你需要遵循以下人设：' + eng.persona.strip()
-        history = [{'role':'system','content': persona_prompt}] + history
-    for _ in range(max_steps):
-        payload = {
-            'model': (eng.model_name or '').strip() or 'gpt-3.5-turbo',
-            'temperature': temperature,
-            'messages': history,
-            'tools': tools,
-            'tool_choice': 'auto',
-            'max_tokens': 512
-        }
-        try:
-            r = requests.post(url, headers=headers, data=json.dumps(payload), timeout=(10, 60))
-            if r.status_code != 200:
-                return {'error': f'LLM错误: {r.status_code}', 'preview': (r.text or '')[:200]}
-            data = r.json() or {}
-            msg = ((data.get('choices') or [{}])[0]).get('message') or {}
-            tool_calls = msg.get('tool_calls') or []
-            content = msg.get('content') or ''
-            history.append({'role':'assistant','content': content, 'tool_calls': tool_calls})
-            if tool_calls:
-                for tc in tool_calls:
-                    fn = (tc.get('function') or {})
-                    name = fn.get('name') or ''
-                    args_raw = fn.get('arguments') or '{}'
-                    try:
-                        args = json.loads(args_raw)
-                    except Exception:
-                        args = {}
-                    result = _execute_tool_call(name, args)
-                    history.append({'role':'tool','tool_call_id': tc.get('id') or '', 'content': json.dumps(result, ensure_ascii=False)})
+    candidates = [eng]
+    try:
+        backup = AiEngine.query.filter(AiEngine.id != eng.id).order_by(AiEngine.id.asc()).first()
+        if backup:
+            candidates.append(backup)
+    except Exception:
+        pass
+    for chosen in candidates:
+        if (chosen.persona or '').strip():
+            persona_prompt = '你需要遵循以下人设：' + chosen.persona.strip()
+            history = [{'role':'system','content': persona_prompt}] + list(messages)
+        base = _normalize_api_base((chosen.api_base or '').strip())
+        url = base.rstrip('/') + '/chat/completions'
+        headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
+        key = (chosen.api_key or '').strip()
+        if key:
+            headers['Authorization'] = 'Bearer ' + key
+            headers['x-api-key'] = key
+        for _ in range(max_steps):
+            payload = {
+                'model': (chosen.model_name or '').strip() or 'gpt-3.5-turbo',
+                'temperature': temperature,
+                'messages': history,
+                'tools': tools,
+                'tool_choice': 'auto',
+                'max_tokens': 512
+            }
+            tried = False
+            for i in range(3):
+                try:
+                    r = requests.post(url, headers=headers, data=json.dumps(payload), timeout=(10, 60))
+                    if r.status_code == 200:
+                        data = r.json() or {}
+                        msg = ((data.get('choices') or [{}])[0]).get('message') or {}
+                        tool_calls = msg.get('tool_calls') or []
+                        content = msg.get('content') or ''
+                        history.append({'role':'assistant','content': content, 'tool_calls': tool_calls})
+                        if tool_calls:
+                            for tc in tool_calls:
+                                fn = (tc.get('function') or {})
+                                name = fn.get('name') or ''
+                                args_raw = fn.get('arguments') or '{}'
+                                try:
+                                    args = json.loads(args_raw)
+                                except Exception:
+                                    args = {}
+                                result = _execute_tool_call(name, args)
+                                history.append({'role':'tool','tool_call_id': tc.get('id') or '', 'content': json.dumps(result, ensure_ascii=False)})
+                            tried = True
+                            break
+                        return {'result_text': content, 'model': (chosen.model_name or '').strip(), 'engine_id': chosen.id}
+                    txt = (r.text or '')
+                    busy = ('50603' in txt) or ('busy' in txt.lower()) or (r.status_code in (429, 503))
+                    if not busy:
+                        return {'error': f'LLM错误: {r.status_code}', 'preview': txt[:200]}
+                    time.sleep(1 + i)
+                except Exception as e:
+                    time.sleep(1)
+            if tried:
                 continue
-            return {'result_text': content, 'model': (eng.model_name or '').strip(), 'engine_id': eng.id}
-        except Exception as e:
-            return {'error': str(e)}
+        break
     return {'error': '超过工具调用步数限制'}
 
 @bp.route('/users')
@@ -402,6 +455,19 @@ def rules():
 def ai_engines():
     engines = AiEngine.query.order_by(AiEngine.id.asc()).all()
     return render_template('admin/ai_engines.html', engines=engines, mask_key=mask_key)
+
+@bp.route('/ai_engines/default/<int:id>', methods=['POST'])
+@login_required
+@admin_required
+def ai_engines_set_default(id):
+    eng = AiEngine.query.get_or_404(id)
+    setting = SystemSetting.query.filter_by(key='default_ai_engine_id').first()
+    if not setting:
+        setting = SystemSetting(key='default_ai_engine_id')
+        db.session.add(setting)
+    setting.value = str(eng.id)
+    db.session.commit()
+    return jsonify({'status': 'ok', 'default_engine_id': eng.id})
 
 @bp.route('/ai_engines/add', methods=['POST'])
 @login_required
@@ -591,6 +657,188 @@ def delete_rule(id):
 def crawlers():
     rows = CrawlerSource.query.order_by(CrawlerSource.id.asc()).all()
     return render_template('admin/crawlers.html', crawlers=rows)
+
+@bp.route('/assets/echarts.js')
+@login_required
+@admin_required
+def echarts_asset():
+    import os
+    # 优先使用项目内静态文件（基于 Flask static_folder）
+    from flask import send_file
+    static_base = current_app.static_folder or os.path.join(current_app.root_path, 'static')
+    candidates = [
+        os.path.join(static_base, 'vendor', 'echarts.min.js'),
+        os.path.join(static_base, 'js', 'echarts.js')
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return send_file(p, mimetype='application/javascript')
+    # 兜底：返回错误提示，避免外网依赖
+    return "console.error('ECharts not found locally');", 200, {'Content-Type': 'application/javascript'}
+
+@bp.route('/assets/china.json')
+@login_required
+@admin_required
+def china_geojson():
+    import os
+    # 优先仅使用项目内的静态文件，确保不访问外网
+    static_base = current_app.static_folder or os.path.join(current_app.root_path, 'static')
+    p = os.path.join(static_base, 'map', 'china.json')
+    if os.path.exists(p):
+        from flask import send_file
+        return send_file(p, mimetype='application/json')
+    # 兜底：如果项目内文件不存在，返回空JSON避免前端报错
+    return jsonify({"type": "FeatureCollection", "features": []})
+
+@bp.route('/assets/echarts-gl.js')
+@login_required
+@admin_required
+def echarts_gl_asset():
+    import os
+    from flask import send_file
+    static_base = current_app.static_folder or os.path.join(current_app.root_path, 'static')
+    p = os.path.join(static_base, 'vendor', 'echarts-gl.min.js')
+    if os.path.exists(p):
+        return send_file(p, mimetype='application/javascript')
+    return "console.warn('ECharts-GL not found locally');", 200, {'Content-Type': 'application/javascript'}
+
+@bp.route('/dashboard')
+@login_required
+@admin_required
+def dashboard():
+    return render_template('admin/dashboard.html')
+
+@bp.route('/dashboard/data/heatmap')
+@login_required
+@admin_required
+def dashboard_heatmap():
+    try:
+        days = int(request.args.get('days') or 30)
+    except Exception:
+        days = 30
+    days = max(1, min(days, 180))
+    sys_prompt = '你是数据分析助手。请基于collection_records表最近数据，识别标题或摘要中出现的中国省市名称，统计其出现次数，按省与市分别汇总为JSON，仅输出JSON，字段：provinces:[{name,value}], cities:[{name,value}]]。'
+    messages = [
+        {'role':'system','content': sys_prompt},
+        {'role':'user','content': f'请统计最近{days}天的数据，适当选择limit，返回JSON'}
+    ]
+    resp = _llm_chat_with_tools(messages, temperature=0, engine_id=None, max_steps=3)
+    content = (resp.get('result_text') or '').strip()
+    data = {}
+    try:
+        import json
+        data = json.loads(content)
+    except Exception:
+        data = {'provinces': [], 'cities': []}
+    return jsonify(data)
+
+@bp.route('/dashboard/data/latest')
+@login_required
+@admin_required
+def dashboard_latest():
+    try:
+        rows = CollectionRecord.query.order_by(CollectionRecord.created_at.desc()).limit(20).all()
+    except Exception:
+        rows = []
+    items = []
+    for r in rows:
+        items.append({
+            'id': r.id,
+            'title': r.title or '',
+            'summary': r.summary or '',
+            'source': r.source or '',
+            'created_at': r.created_at.isoformat() if r.created_at else ''
+        })
+    try:
+        from datetime import datetime, timedelta
+        total = CollectionRecord.query.count()
+        now = datetime.utcnow()
+        today_begin = datetime(year=now.year, month=now.month, day=now.day)
+        today = CollectionRecord.query.filter(CollectionRecord.created_at >= today_begin).count()
+        week_begin = now - timedelta(days=7)
+        week = CollectionRecord.query.filter(CollectionRecord.created_at >= week_begin).count()
+        by = {}
+        for i in range(7):
+            d = now - timedelta(days=i)
+            k = datetime(year=d.year, month=d.month, day=d.day)
+            c = CollectionRecord.query.filter(CollectionRecord.created_at >= k, CollectionRecord.created_at < k + timedelta(days=1)).count()
+            by[k.strftime('%Y-%m-%d')] = c
+        by_day = [{'day': k, 'count': by[k]} for k in sorted(by.keys())]
+    except Exception:
+        total = len(items)
+        today = 0
+        week = 0
+        by_day = []
+    return jsonify({'items': items, 'total': total, 'today': today, 'week': week, 'by_day': by_day})
+
+@bp.route('/dashboard/data/source_pie')
+@login_required
+@admin_required
+def dashboard_source_pie():
+    try:
+        from sqlalchemy import func
+        # 统计各来源数量
+        results = db.session.query(CollectionRecord.source, func.count(CollectionRecord.id)).group_by(CollectionRecord.source).all()
+        data = [{'name': r[0] or '未知', 'value': r[1]} for r in results]
+        # 按数量降序
+        data.sort(key=lambda x: x['value'], reverse=True)
+        return jsonify({'data': data})
+    except Exception as e:
+        return jsonify({'data': [], 'error': str(e)})
+
+@bp.route('/dashboard/ai_analyze', methods=['POST'])
+@login_required
+@admin_required
+def dashboard_ai_analyze():
+    try:
+        instruction = (request.json.get('instruction') or '').strip()
+        engine_id = request.json.get('engine_id')
+        if not instruction:
+            return jsonify({'error': '指令不能为空'}), 400
+            
+        # 获取最近数据供分析
+        rows = CollectionRecord.query.order_by(CollectionRecord.created_at.desc()).limit(50).all()
+        data_summary = "\n".join([f"- [{r.source}] {r.title}" for r in rows])
+        
+        sys_prompt = """你是一个智能数据分析专家。请根据用户指令和提供的舆情数据摘要，进行深度分析。
+请返回 JSON 格式，包含两个字段：
+1. "analysis": string, 分析报告，支持 Markdown，建议分点阐述，语言专业简练。
+2. "chart_option": object, (可选) 如果分析结果适合图表展示，请提供一个 ECharts option 对象（JSON格式），例如饼图或柱状图。如果不适合或无法生成，设为 null。确保 option 中的 data 格式正确。
+"""
+        user_prompt = f"""用户指令：{instruction}
+
+数据摘要（最近50条）：
+{data_summary}
+
+请分析并返回 JSON。"""
+        
+        messages = [
+            {'role': 'system', 'content': sys_prompt},
+            {'role': 'user', 'content': user_prompt}
+        ]
+        
+        resp = _llm_chat(messages, temperature=0.7, engine_id=engine_id)
+        if resp.get('error'):
+            return jsonify(resp), 500
+            
+        content = resp.get('result_text') or ''
+        # 尝试解析 JSON
+        import json
+        try:
+            s = content
+            if '```json' in s:
+                s = s.split('```json')[1].split('```')[0].strip()
+            elif '```' in s:
+                s = s.split('```')[1].split('```')[0].strip()
+            
+            res_obj = json.loads(s)
+            return jsonify(res_obj)
+        except:
+            # 如果解析失败，直接作为文本返回
+            return jsonify({'analysis': content, 'chart_option': None})
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @bp.route('/crawlers/add', methods=['POST'])
 @login_required

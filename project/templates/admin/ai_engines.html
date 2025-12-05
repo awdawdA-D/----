@@ -89,7 +89,10 @@ function setDefault(id, base, key, model){
     if(key){ localStorage.setItem('cherry_api_key', String(key)); }
     if(model){ localStorage.setItem('cherry_model', String(model)); }
     localStorage.setItem('cherry_engine_id', String(id));
-    layui.layer.msg('已设为默认引擎');
+    fetch("{{ url_for('admin.ai_engines_set_default', id=0) }}".replace('0', String(id)), { method: 'POST' })
+      .then(function(r){ return r.json(); })
+      .then(function(){ layui.layer.msg('已设为默认引擎'); })
+      .catch(function(){ layui.layer.msg('默认引擎写入服务端失败'); });
   }catch(e){ layui.layer.msg('设置失败'); }
 }
 </script>

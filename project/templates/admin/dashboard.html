@@ -1,0 +1,543 @@
+{% extends 'base_layout.html' %}
+
+{% block content %}
+<style>
+  :root {
+    --bg-color: #0b1120;
+    --card-bg: rgba(30, 41, 59, 0.7);
+    --border-color: #334155;
+    --text-main: #e2e8f0;
+    --text-sub: #94a3b8;
+    --accent: #38bdf8;
+  }
+  .dashboard-container {
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    min-height: calc(100vh - 80px);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+  
+  /* Header & KPIs */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .kpi-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(4px);
+  }
+  .kpi-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--accent);
+    text-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+  }
+  .kpi-label {
+    font-size: 0.875rem;
+    color: var(--text-sub);
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* Main Grid */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 25% 50% 25%;
+    gap: 16px;
+    flex: 1;
+    min-height: 600px;
+  }
+  
+  /* Panels */
+  .panel {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+  .panel-header {
+    padding: 12px 16px;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+    color: var(--accent);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .panel-body {
+    flex: 1;
+    padding: 10px;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  /* Specific Components */
+  .chart-container {
+    width: 100%;
+    height: 100%;
+  }
+  
+  /* List Style */
+  .news-list {
+    overflow-y: auto;
+    height: 100%;
+    padding-right: 4px;
+  }
+  .news-item {
+    padding: 10px;
+    border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+    transition: background 0.2s;
+    cursor: pointer;
+  }
+  .news-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .news-title {
+    font-size: 0.9rem;
+    color: #f1f5f9;
+    margin-bottom: 4px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .news-meta {
+    font-size: 0.75rem;
+    color: #64748b;
+    display: flex;
+    justify-content: space-between;
+  }
+  
+  /* AI Panel */
+  .ai-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  .ai-result {
+    flex: 1;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 10px;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+  }
+  .ai-input-box {
+    display: flex;
+    gap: 8px;
+  }
+  .ai-input {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid #475569;
+    border-radius: 4px;
+    color: white;
+    padding: 8px;
+    outline: none;
+  }
+  .ai-input:focus {
+    border-color: var(--accent);
+  }
+  .ai-btn {
+    background: var(--accent);
+    color: #0f172a;
+    border: none;
+    border-radius: 4px;
+    padding: 0 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .ai-btn:hover {
+    opacity: 0.9;
+  }
+  .ai-btn:disabled {
+    background: #475569;
+    cursor: not-allowed;
+  }
+
+  /* Tabs for Center Panel */
+  .view-switch {
+    display: flex;
+    gap: 2px;
+    background: #0f172a;
+    border-radius: 4px;
+    padding: 2px;
+    font-size: 0.8rem;
+  }
+  .view-btn {
+    padding: 4px 12px;
+    cursor: pointer;
+    border-radius: 2px;
+    color: #64748b;
+  }
+  .view-btn.active {
+    background: #1e293b;
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+  
+  /* Markdown Styles in AI Result */
+  .ai-result strong { color: var(--accent); }
+  .ai-result ul { padding-left: 20px; margin: 8px 0; }
+  .ai-result li { margin-bottom: 4px; }
+</style>
+
+<div class="dashboard-container">
+  <!-- KPI Row -->
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="kpi-value" id="kpi_total">-</div>
+      <div class="kpi-label">总采集量</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value" id="kpi_week">-</div>
+      <div class="kpi-label">近七天</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value" id="kpi_today">-</div>
+      <div class="kpi-label">今日新增</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value" id="kpi_sources">-</div>
+      <div class="kpi-label">来源站点</div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-grid">
+    
+    <!-- Left Column -->
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      <div class="panel" style="height: 40%;">
+        <div class="panel-header">来源分布 (饼图)</div>
+        <div class="panel-body">
+          <div id="chart_pie" class="chart-container"></div>
+        </div>
+      </div>
+      <div class="panel" style="height: 60%;">
+        <div class="panel-header">最新采集</div>
+        <div class="panel-body">
+          <div id="list_latest" class="news-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center Column -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>全球舆情态势</span>
+        <div class="view-switch">
+          <div class="view-btn active" onclick="switchMap('3d')">3D地球</div>
+          <div class="view-btn" onclick="switchMap('2d')">2D地图</div>
+        </div>
+      </div>
+      <div class="panel-body" style="padding: 0;">
+        <div id="chart_map_3d" class="chart-container" style="z-index: 1;"></div>
+        <div id="chart_map_2d" class="chart-container" style="display: none; z-index: 2; position: absolute; top: 0; left: 0; background: var(--bg-color);"></div>
+      </div>
+    </div>
+
+    <!-- Right Column -->
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      <div class="panel" style="height: 40%;">
+        <div class="panel-header">趋势分析 (柱状图)</div>
+        <div class="panel-body">
+          <div id="chart_bar" class="chart-container"></div>
+        </div>
+      </div>
+      <div class="panel" style="height: 60%;">
+        <div class="panel-header">AI 智能分析</div>
+        <div class="panel-body">
+          <div class="ai-container">
+            <div id="ai_result_box" class="ai-result">
+              请在下方输入指令，让 AI 帮您分析数据...
+              <br><br>
+              例如：
+              <br> - "分析最近一周的舆情热点"
+              <br> - "总结主要的新闻来源倾向"
+            </div>
+            <div class="ai-input-box">
+              <input type="text" id="ai_input" class="ai-input" placeholder="输入分析指令..." onkeydown="if(event.keyCode==13) runAI()">
+              <button class="ai-btn" onclick="runAI()" id="ai_btn">分析</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- 引入本地 ECharts -->
+<script src="{{ url_for('admin.echarts_asset') }}"></script>
+
+<script>
+// Utility
+function numFmt(n){try{n=Number(n||0);if(n>=10000)return (n/10000).toFixed(1)+'万';return String(n);}catch(e){return String(n||0)}}
+
+// Instances
+var chartPie = null;
+var chartBar = null;
+var chartMap2D = null;
+var chartMap3D = null; // delay init
+
+// Resize handler
+window.addEventListener('resize', function(){
+  try{ chartPie && chartPie.resize(); }catch(e){}
+  try{ chartBar && chartBar.resize(); }catch(e){}
+  try{ chartMap2D && chartMap2D.resize(); }catch(e){}
+  try{ chartMap3D && chartMap3D.resize(); }catch(e){}
+});
+
+// 1. Load Basic Data (KPI, List, Bar)
+function loadBasicData() {
+  fetch('{{ url_for('admin.dashboard_latest') }}').then(r=>r.json()).then(d=>{
+    // KPIs
+    document.getElementById('kpi_total').innerText = numFmt(d.total);
+    document.getElementById('kpi_week').innerText = numFmt(d.week);
+    document.getElementById('kpi_today').innerText = numFmt(d.today);
+    // List
+    var listHtml = '';
+    (d.items||[]).forEach(it=>{
+      listHtml += `<div class="news-item" title="${it.title}">
+        <div class="news-title">${it.title}</div>
+        <div class="news-meta"><span>${it.source}</span><span>${it.created_at.split('T')[0]}</span></div>
+      </div>`;
+    });
+    document.getElementById('list_latest').innerHTML = listHtml;
+    // Bar Chart
+    var xData = (d.by_day||[]).map(x=>x.day.substring(5));
+    var yData = (d.by_day||[]).map(x=>x.count);
+    if(!window.echarts){ return; }
+    chartBar = chartBar || echarts.init(document.getElementById('chart_bar'));
+    chartBar.setOption({
+      tooltip: { trigger: 'axis' },
+      grid: { top: 20, right: 10, bottom: 20, left: 40, containLabel: true },
+      xAxis: { type: 'category', data: xData, axisLabel: { color: '#94a3b8' } },
+      yAxis: { type: 'value', splitLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
+      series: [{ type: 'bar', data: yData, itemStyle: { color: '#38bdf8', borderRadius: [4,4,0,0] } }]
+    });
+  });
+}
+
+// 2. Load Pie Data
+function loadPieData() {
+  fetch('{{ url_for('admin.dashboard_source_pie') }}').then(r=>r.json()).then(res=>{
+    var data = res.data || [];
+    // KPI Sources
+    document.getElementById('kpi_sources').innerText = data.length;
+    
+    if(!window.echarts){ return; }
+    chartPie = chartPie || echarts.init(document.getElementById('chart_pie'));
+    chartPie.setOption({
+      tooltip: { trigger: 'item' },
+      legend: { type: 'scroll', bottom: 0, textStyle: { color: '#94a3b8' } },
+      series: [{
+        type: 'pie',
+        radius: ['40%', '70%'],
+        center: ['50%', '45%'],
+        itemStyle: { borderRadius: 5, borderColor: '#1e293b', borderWidth: 2 },
+        label: { show: false },
+        data: data
+      }]
+    });
+  });
+}
+
+// 3. Load Maps
+function loadMaps() {
+  if(!window.echarts){ return; }
+  chartMap2D = chartMap2D || echarts.init(document.getElementById('chart_map_2d'));
+  // Load GeoJSON
+  fetch('{{ url_for('admin.china_geojson') }}').then(r=>r.json()).then(geo=>{
+    echarts.registerMap('china', geo);
+    
+    // Load Heatmap Data
+    fetch('{{ url_for('admin.dashboard_heatmap') }}?days=30').then(r=>r.json()).then(d=>{
+      var data = (d.provinces||[]).map(x=>{
+        return { name: normalizeProvinceName(x.name), value: x.value }
+      });
+      var maxVal = Math.max(...data.map(x=>x.value), 100);
+
+      // 2D Map Option
+      chartMap2D.setOption({
+        visualMap: { min: 0, max: maxVal, text:['High','Low'], textStyle:{color:'#fff'}, inRange: { color: ['#bae6fd','#0ea5e9','#0369a1'] }, bottom: 20, left: 20 },
+        geo: {
+          map: 'china', roam: true,
+          label: { show: true, color: '#ffffff', fontSize: 10 },
+          itemStyle: { areaColor: '#1e293b', borderColor: '#38bdf8' },
+          emphasis: { itemStyle: { areaColor: '#0ea5e9' }, label: { show: true, color: '#ffffff' } }
+        },
+        series: [{ type: 'map', geoIndex: 0, data: data, label: { show: true, color: '#ffffff', fontSize: 10 } }]
+      });
+
+      // 3D Earth Option
+      // 需要 echarts-gl 支持。如果未加载成功，这块会报错。
+      // 动态加载本地 echarts-gl（若存在）
+      loadEchartsGL(function(){
+        try {
+          chartMap3D = echarts.init(document.getElementById('chart_map_3d'));
+          chartMap3D.setOption({
+            backgroundColor: '#000',
+            globe: {
+              baseTexture: null,
+              heightTexture: null,
+              displacementScale: 0.04,
+              shading: 'realistic',
+              environment: '#000000',
+              realisticMaterial: { roughness: 0.9 },
+              postEffect: { enable: true },
+              atmosphere: { show: true },
+              light: {
+                main: { intensity: 5, shadow: true },
+                ambient: { intensity: 0.2 }
+              },
+              viewControl: { autoRotate: true, autoRotateSpeed: 5 }
+            },
+            series: []
+          });
+          // 简单的纹理生成代替贴图，避免跨域问题
+          createEarthTexture();
+        } catch(e) {
+          console.warn('GL init failed:', e);
+          document.getElementById('chart_map_3d').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#64748b;">3D Earth requires WebGL & echarts-gl</div>';
+        }
+      });
+    });
+  });
+}
+
+function loadEchartsGL(cb){
+  var s = document.createElement('script');
+  s.src = '{{ url_for('admin.echarts_gl_asset') }}';
+  s.onload = function(){ try{ cb && cb(); }catch(e){} };
+  s.onerror = function(){ try{ cb && cb(); }catch(e){} };
+  document.head.appendChild(s);
+}
+
+function createEarthTexture() {
+    // 使用 canvas 生成一个简单的深蓝色纹理
+    var canvas = document.createElement('canvas');
+    canvas.width = 512; canvas.height = 256;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#172554';
+    ctx.fillRect(0,0,512,256);
+    // 画一些线模拟经纬度
+    ctx.strokeStyle = '#1e3a8a';
+    ctx.lineWidth = 1;
+    for(var i=0;i<512;i+=32) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,256); ctx.stroke(); }
+    for(var i=0;i<256;i+=32) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(512,i); ctx.stroke(); }
+    
+    if(chartMap3D) {
+        chartMap3D.setOption({ globe: { baseTexture: canvas } });
+    }
+}
+
+function normalizeProvinceName(n){
+  n=String(n||'');
+  var map={
+    '北京':'北京市','上海':'上海市','天津':'天津市','重庆':'重庆市',
+    '河北':'河北省','山西':'山西省','内蒙古':'内蒙古自治区','辽宁':'辽宁省','吉林':'吉林省','黑龙江':'黑龙江省',
+    '江苏':'江苏省','浙江':'浙江省','安徽':'安徽省','福建':'福建省','江西':'江西省','山东':'山东省',
+    '河南':'河南省','湖北':'湖北省','湖南':'湖南省','广东':'广东省','广西':'广西壮族自治区','海南':'海南省',
+    '四川':'四川省','贵州':'贵州省','云南':'云南省','西藏':'西藏自治区','陕西':'陕西省','甘肃':'甘肃省',
+    '青海':'青海省','宁夏':'宁夏回族自治区','新疆':'新疆维吾尔自治区','香港':'香港','澳门':'澳门','台湾':'台湾省'
+  };
+  var base=n.replace(/省|市|自治区|壮族自治区|回族自治区|维吾尔自治区/g,'');
+  return map[base]||n;
+}
+
+// View Switcher
+window.switchMap = function(mode) {
+  document.querySelectorAll('.view-btn').forEach(b=>b.classList.remove('active'));
+  event.target.classList.add('active');
+  if(mode === '3d') {
+    document.getElementById('chart_map_2d').style.display = 'none';
+  } else {
+    document.getElementById('chart_map_2d').style.display = 'block';
+    chartMap2D.resize();
+  }
+};
+
+// AI Analysis
+window.runAI = function() {
+  var input = document.getElementById('ai_input');
+  var btn = document.getElementById('ai_btn');
+  var box = document.getElementById('ai_result_box');
+  var txt = input.value.trim();
+  if(!txt) return;
+  
+  btn.disabled = true; btn.innerText = '分析中...';
+  box.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8">AI 正在思考并分析数据...</div>';
+  
+  fetch('{{ url_for('admin.dashboard_ai_analyze') }}', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ instruction: txt, engine_id: (function(){ try{ var v = localStorage.getItem('cherry_engine_id'); return v? parseInt(v): null; }catch(e){ return null; } })() })
+  }).then(r=>r.json()).then(res=>{
+    btn.disabled = false; btn.innerText = '分析';
+    if(res.error) {
+      box.innerHTML = '<span style="color:red">Error: '+res.error+'</span>';
+      return;
+    }
+    // Render Text
+    var html = (res.analysis||'').replace(/\n/g, '<br>');
+    box.innerHTML = html;
+    // Render Chart if any
+    if(res.chart_option) {
+        // 创建一个临时的图表容器在结果里
+        var cid = 'ai_chart_' + Date.now();
+        var div = document.createElement('div');
+        div.style.width = '100%';
+        div.style.height = '200px';
+        div.style.marginTop = '10px';
+        div.id = cid;
+        box.appendChild(div);
+        var c = echarts.init(document.getElementById(cid));
+        c.setOption(res.chart_option);
+    }
+  }).catch(e=>{
+    btn.disabled = false; btn.innerText = '分析';
+    box.innerHTML = '<span style="color:red">Network Error</span>';
+  });
+};
+
+// Init
+// 初始化流程：即使 ECharts 未加载，也不影响 AI 面板能力
+try{ loadBasicData(); }catch(e){}
+try{ loadPieData(); }catch(e){}
+try{ loadMaps(); }catch(e){}
+
+</script>
+{% endblock %}
