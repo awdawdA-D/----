@@ -3,5 +3,5 @@ Flask-SQLAlchemy
 Flask-Login
 requests
 beautifulsoup4
-
+charset-normalizer
 

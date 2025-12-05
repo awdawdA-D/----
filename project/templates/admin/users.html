@@ -1,4 +1,4 @@
-{% extends 'admin/base_admin.html' %}
+{% extends 'base_layout.html' %}
 
 {% block content %}
 <div class="layui-card">
@@ -53,6 +53,9 @@
     </table>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
 <script>
 layui.use('form', function(){
   var form = layui.form;

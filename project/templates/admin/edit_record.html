@@ -1,0 +1,44 @@
+{% extends 'base_layout.html' %}
+{% block content %}
+<style>
+  .content-wrapper{max-width:800px;margin:0 auto}
+  .form-row{margin-bottom:12px}
+  .form-row label{display:block;margin-bottom:6px;color:#fff}
+</style>
+<div class="content-wrapper">
+  <h2>编辑记录</h2>
+  <form method="post">
+    <div class="form-row">
+      <label>标题</label>
+      <input name="title" class="layui-input" value="{{ record.title }}">
+    </div>
+    <div class="form-row">
+      <label>来源</label>
+      <input name="source" class="layui-input" value="{{ record.source }}">
+    </div>
+    <div class="form-row">
+      <label>原始URL</label>
+      <input name="original_url" class="layui-input" value="{{ record.original_url }}">
+    </div>
+    <div class="form-row">
+      <label>封面</label>
+      <input name="cover" class="layui-input" value="{{ record.cover }}">
+    </div>
+    <div class="form-row">
+      <label>概要</label>
+      <textarea name="summary" class="layui-textarea" rows="4">{{ record.summary }}</textarea>
+    </div>
+    <div class="form-row">
+      <label>深度内容</label>
+      <textarea name="deep_content" class="layui-textarea" rows="8">{{ record.deep_content }}</textarea>
+    </div>
+    <div class="form-row">
+      <input type="checkbox" name="deep_collected" value="1" {% if record.deep_collected %}checked{% endif %}> 已深度采集
+    </div>
+    <div class="form-row">
+      <button type="submit" class="layui-btn layui-bg-blue">保存</button>
+      <a href="{{ url_for('admin.data_warehouse') }}" class="layui-btn layui-btn-primary">返回</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

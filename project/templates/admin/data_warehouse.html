@@ -1,0 +1,155 @@
+{% extends 'base_layout.html' %}
+{% block content %}
+<style>
+  .content-wrapper{max-width:980px;margin:0 auto}
+  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:15px}
+  .toolbar .layui-input{background:#fff !important;color:#333 !important;border-color:#dcdfe6 !important}
+  .toolbar select.layui-select{background:#fff !important;color:#333 !important;border-color:#dcdfe6 !important}
+  .table-container{margin-top:10px}
+  .pager{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+  .pager a, .pager span{padding:4px 8px;border:1px solid #2B384B;color:#7C8B9F}
+  .pager .active{background:#009BFF;color:#fff;border-color:#009BFF}
+  .ops{display:flex;gap:6px;align-items:center;flex-wrap:nowrap}
+  .ops .layui-btn-xs{height:26px;line-height:26px;padding:0 10px;font-size:12px}
+  .select-col{width:32px}
+</style>
+
+<div class="content-wrapper">
+  <h2>数据仓库管理</h2>
+  <div class="toolbar">
+    <input id="q" class="layui-input" placeholder="搜索标题或概要" value="{{ q }}" style="flex:1">
+    <input id="source" class="layui-input" placeholder="来源筛选（可不填）" value="{{ source }}" style="width:180px">
+    <select id="perPage" class="layui-select" style="width:120px">
+      <option value="10" {% if per_page==10 %}selected{% endif %}>10/页</option>
+      <option value="20" {% if per_page==20 %}selected{% endif %}>20/页</option>
+      <option value="50" {% if per_page==50 %}selected{% endif %}>50/页</option>
+    </select>
+    <button id="searchBtn" class="layui-btn layui-bg-blue">查询</button>
+    <button id="deepBtn" class="layui-btn layui-bg-orange">详细内容采集</button>
+  </div>
+
+  <div class="table-container">
+    <table class="layui-table">
+      <thead>
+        <tr>
+          <th class="select-col"><input type="checkbox" id="chkAll"></th>
+          <th>ID</th>
+          <th>标题</th>
+          <th>来源</th>
+          <th>采集时间</th>
+          <th>深度</th>
+          <th style="width:240px">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for record in records %}
+        <tr>
+          <td class="select-col"><input type="checkbox" class="chkRow" value="{{ record.id }}"></td>
+          <td>{{ record.id }}</td>
+          <td><a href="{{ record.original_url }}" target="_blank">{{ record.title }}</a></td>
+          <td>{{ record.source }}</td>
+          <td>{{ record.created_at }}</td>
+          <td>{{ '是' if record.deep_collected else '否' }}</td>
+          <td>
+            <div class="ops">
+              <button class="layui-btn layui-btn-normal layui-btn-xs preview-btn" data-id="{{ record.id }}">预览</button>
+              <button class="layui-btn layui-btn-warm layui-btn-xs deep-one" data-id="{{ record.id }}">详细采集</button>
+              <a href="{{ url_for('admin.edit_record', id=record.id) }}" class="layui-btn layui-bg-green layui-btn-xs">编辑</a>
+              <a href="{{ url_for('admin.delete_record', id=record.id) }}" class="layui-btn layui-btn-danger layui-btn-xs" onclick="return confirm('确定删除？')">删除</a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% set total_pages = (total + per_page - 1) // per_page %}
+  <div class="pager">
+    {% if page > 1 %}
+    <a href="{{ url_for('admin.data_warehouse', page=page-1, per_page=per_page, q=q, source=source) }}">上一页</a>
+    {% else %}
+    <span>上一页</span>
+    {% endif %}
+    <span class="active">{{ page }}/{{ total_pages }}</span>
+    {% if page < total_pages %}
+    <a href="{{ url_for('admin.data_warehouse', page=page+1, per_page=per_page, q=q, source=source) }}">下一页</a>
+    {% else %}
+    <span>下一页</span>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+layui.use(['layer'], function(){
+  var layer = layui.layer;
+  document.getElementById('searchBtn').addEventListener('click', function(){
+    var q = document.getElementById('q').value.trim();
+    var source = document.getElementById('source').value.trim();
+    var per = document.getElementById('perPage').value;
+    var url = new URL(window.location.href);
+    url.searchParams.set('q', q);
+    url.searchParams.set('source', source);
+    url.searchParams.set('per_page', per);
+    url.searchParams.set('page', '1');
+    window.location.href = url.toString();
+  });
+  // AI分析模块已移除
+  document.querySelectorAll('.preview-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var id = btn.getAttribute('data-id');
+      var idx = layer.load(2);
+      fetch('/admin/data_warehouse/preview/'+id)
+        .then(function(r){ return r.json(); })
+        .then(function(resp){
+          layer.close(idx);
+          if(resp.status === 'ok'){
+            var title = resp.title || ('记录 #'+resp.id);
+            var source = resp.source || '';
+            var url = resp.original_url || '';
+            var content = resp.deep_content || '';
+            function esc(s){ return (s||'').replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
+            var linkHtml = url ? '<a href="'+ esc(url) +'" target="_blank">点击跳转原文</a>' : '无链接';
+            var contentHtml = content ? '<div style="white-space:pre-wrap;word-break:break-word;line-height:1.6">'+ esc(content) +'</div>' : '<div style="color:#999">暂无内容</div>';
+            var html = ''+
+              '<div style="padding:10px">'+
+                '<div style="font-size:16px;font-weight:600;margin-bottom:10px">'+ esc(title) +'</div>'+
+                '<div style="font-size:12px;color:#666;margin-bottom:12px">来源：'+ esc(source || '未知来源') +' | 链接：'+ linkHtml +'</div>'+
+                contentHtml+
+              '</div>';
+            layer.open({ title: '内容预览', area: ['720px','540px'], content: html });
+          } else {
+            layer.msg(resp.message || '预览失败');
+          }
+        })
+        .catch(function(){ layer.close(idx); layer.msg('预览失败'); });
+    });
+  });
+  var chkAll = document.getElementById('chkAll');
+  if(chkAll){
+    chkAll.addEventListener('change', function(){
+      var c = chkAll.checked;
+      document.querySelectorAll('.chkRow').forEach(function(x){ x.checked = c; });
+    });
+  }
+  function doDeep(ids){
+    var idx = layer.load(2);
+    fetch('/admin/data_warehouse/deep_collect', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ids: ids}) })
+      .then(function(r){ return r.json(); })
+      .then(function(resp){ layer.close(idx); layer.msg('成功: '+ (resp.updated||[]).length +', 失败: '+ (resp.failed||[]).length); })
+      .catch(function(){ layer.close(idx); layer.msg('详细采集失败'); });
+  }
+  document.getElementById('deepBtn').addEventListener('click', function(){
+    var ids = [];
+    document.querySelectorAll('.chkRow:checked').forEach(function(x){ ids.push(parseInt(x.value,10)); });
+    if(ids.length === 0){ layer.msg('请先勾选数据'); return; }
+    doDeep(ids);
+  });
+  document.querySelectorAll('.deep-one').forEach(function(btn){
+    btn.addEventListener('click', function(){ var id = parseInt(btn.getAttribute('data-id'),10); doDeep([id]); });
+  });
+});
+</script>
+{% endblock %}

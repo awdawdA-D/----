@@ -1,0 +1,95 @@
+{% extends 'base_layout.html' %}
+{% block content %}
+<style>
+  .content-wrapper{max-width:100%;margin:0;padding:0 16px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .engine-card{position:relative;background:linear-gradient(135deg,#0f172a,#1e293b);border:1px solid #2B384B;color:#fff;border-radius:8px;overflow:hidden}
+  .engine-header{padding:12px 16px;display:flex;justify-content:space-between;align-items:center;background:rgba(0,155,255,0.08)}
+  .engine-title{font-size:14px;font-weight:600}
+  .engine-body{padding:14px 16px;color:#d1d5db}
+  .engine-meta{font-size:12px;line-height:1.8}
+  .engine-actions{display:flex;gap:8px;padding:12px 16px;border-top:1px dashed #334155}
+  .engine-actions .layui-btn-xs{height:26px;line-height:26px}
+  .toolbar{display:flex;justify-content:flex-end;margin:12px 0}
+  .key-mask{font-family:monospace;color:#9CA3AF}
+  @media(max-width:1200px){.grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:768px){.grid{grid-template-columns:1fr}}
+  .badge{display:inline-block;background:#009BFF;color:#fff;font-size:11px;border-radius:3px;padding:2px 6px;margin-left:8px}
+</style>
+
+<div class="content-wrapper">
+  <h2>AI引擎管理</h2>
+  <div class="toolbar">
+    <button id="addBtn" class="layui-btn layui-bg-blue">新增引擎</button>
+  </div>
+
+  <div class="grid">
+    {% for e in engines %}
+    <div class="engine-card">
+      <div class="engine-header">
+        <div class="engine-title">{{ e.provider or '未命名服务商' }}<span class="badge">{{ e.model_name or '未设置模型' }}</span></div>
+        <div style="font-size:12px;color:#93c5fd">ID: {{ e.id }}</div>
+      </div>
+      <div class="engine-body">
+        <div class="engine-meta">API地址：<code style="color:#93c5fd">{{ e.api_base }}</code></div>
+        <div class="engine-meta">API密钥：<span class="key-mask">{{ mask_key(e.api_key) }}</span></div>
+        <div class="engine-meta">创建时间：{{ e.created_at }}</div>
+      </div>
+      <div class="engine-actions">
+        <a href="{{ url_for('admin.ai_engines_edit', id=e.id) }}" class="layui-btn layui-bg-green layui-btn-xs">编辑</a>
+        <a href="{{ url_for('admin.ai_engines_delete', id=e.id) }}" class="layui-btn layui-btn-danger layui-btn-xs" onclick="return confirm('确定删除该引擎？')">删除</a>
+        <button class="layui-btn layui-btn-primary layui-btn-xs" onclick="testEngine({{ e.id }})">测试</button>
+        <button class="layui-btn layui-bg-orange layui-btn-xs" onclick="setDefault({{ e.id }}, '{{ e.api_base | e }}', '{{ e.api_key | e }}', '{{ e.model_name | e }}')">设为默认</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+layui.use(['layer','form'], function(){
+  var layer = layui.layer;
+  var form = layui.form;
+  function openAdd(){
+    var tpl = ''+
+      '<form id="engForm" class="layui-form" style="padding:10px 16px">'+
+      '  <div class="layui-form-item"><label class="layui-form-label">服务商</label><div class="layui-input-block"><input name="provider" class="layui-input" placeholder="如：OpenAI、Silicon、Alibaba"></div></div>'+
+      '  <div class="layui-form-item"><label class="layui-form-label">API地址</label><div class="layui-input-block"><input name="api_base" class="layui-input" placeholder="如：https://api.openai.com/v1" required></div></div>'+
+      '  <div class="layui-form-item"><label class="layui-form-label">API密钥</label><div class="layui-input-block"><input name="api_key" class="layui-input" placeholder="以Bearer密钥形式"></div></div>'+
+      '  <div class="layui-form-item"><label class="layui-form-label">模型名称</label><div class="layui-input-block"><input name="model_name" class="layui-input" placeholder="如：gpt-4o-mini"></div></div>'+
+      '  <div style="text-align:right; margin-top:10px">'+
+      '    <button type="button" id="saveBtn" class="layui-btn layui-bg-blue">保存</button>'+ 
+      '    <button type="button" class="layui-btn layui-btn-primary" onclick="layer.closeAll()">取消</button>'+ 
+      '  </div>'+ 
+      '</form>';
+    layer.open({title:'新增AI引擎', area:['720px','480px'], content: tpl});
+    setTimeout(function(){ form.render(); var btn=document.getElementById('saveBtn'); if(btn){ btn.addEventListener('click', function(){
+      var f=document.getElementById('engForm');
+      var body=new URLSearchParams({provider: f.provider.value.trim(), api_base: f.api_base.value.trim(), api_key: f.api_key.value.trim(), model_name: f.model_name.value.trim()});
+      if(!f.api_base.value.trim()){ layer.msg('API地址不能为空'); return; }
+      fetch("{{ url_for('admin.ai_engines_add') }}", {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString()})
+        .then(function(){ layer.closeAll(); location.reload(); });
+    }); } }, 50);
+  }
+  document.getElementById('addBtn').addEventListener('click', openAdd);
+});
+function testEngine(id){
+  layui.layer.load(2);
+  fetch("{{ url_for('admin.ai_engines_test', id=0) }}".replace('0', String(id)))
+    .then(function(r){ return r.json(); })
+    .then(function(resp){ layui.layer.closeAll('loading'); var ok = resp.status==='ok'; layui.layer.open({title: ok?'测试成功':'测试失败', area:['640px','420px'], content: '<div style="white-space:pre-wrap;line-height:1.6">'+ (resp.preview||resp.message||'无详情') +'</div>'}); })
+    .catch(function(){ layui.layer.closeAll('loading'); layui.layer.msg('测试失败'); });
+}
+function setDefault(id, base, key, model){
+  try{
+    if(base){ localStorage.setItem('cherry_api_base', String(base)); }
+    if(key){ localStorage.setItem('cherry_api_key', String(key)); }
+    if(model){ localStorage.setItem('cherry_model', String(model)); }
+    localStorage.setItem('cherry_engine_id', String(id));
+    layui.layer.msg('已设为默认引擎');
+  }catch(e){ layui.layer.msg('设置失败'); }
+}
+</script>
+{% endblock %}

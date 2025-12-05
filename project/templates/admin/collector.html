@@ -1,0 +1,154 @@
+{% extends 'base_layout.html' %}
+{% block content %}
+<style>
+  .content-wrapper{max-width:980px;margin:0 auto}
+  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:15px}
+  .card-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .item-card{background:#ffffff;border:1px solid #e5e7eb;border-radius:4px;overflow:hidden}
+  .item-cover{width:100%;height:140px;object-fit:cover;background:#ffffff}
+  .item-body{padding:12px}
+  .item-title{font-size:14px;color:#333;line-height:1.4;margin-bottom:8px}
+  .item-meta{font-size:12px;color:#666;margin-bottom:10px}
+  .item-actions{display:flex;justify-content:space-between;align-items:center}
+  .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+  .status-ok{background:#16b777}
+  .status-pending{background:#FF5722}
+  .footer-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+  .select-with-caret{position:relative}
+  .select-with-caret::after{content:'▾';position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#7C8B9F;pointer-events:none}
+  .select-with-caret select{padding-right:22px}
+</style>
+
+<div class="content-wrapper">
+  <div class="toolbar">
+    <input id="keywordInput" class="layui-input" placeholder="请输入采集关键词或需求" style="flex:1">
+    <div class="select-with-caret" style="width:140px">
+      <select id="sourceSelect" class="layui-select" style="width:100%">
+        <option value="baidu" selected>百度新闻</option>
+        <option value="xinhua">新华网</option>
+      </select>
+    </div>
+    <input id="countInput" type="number" min="1" class="layui-input" placeholder="采集条数(默认20)" style="width:120px">
+    <button id="collectBtn" class="layui-btn layui-bg-blue">采集</button>
+  </div>
+  <div class="layui-progress" lay-showPercent="true" lay-filter="collectProgressFilter" style="margin-bottom:15px" id="collectProgress">
+    <div class="layui-progress-bar" lay-percent="0%"></div>
+  </div>
+
+  <div id="results" class="card-grid"></div>
+
+  <div class="footer-actions">
+    <button id="saveSelectedBtn" class="layui-btn">保存选中</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+layui.use(['element','layer'], function(){
+  var element = layui.element;
+  var layer = layui.layer;
+
+  function setProgress(p){
+    element.progress('collectProgressFilter', p+'%');
+    var bar = document.querySelector('#collectProgress .layui-progress-bar');
+    if(bar){ bar.setAttribute('lay-percent', p+'%'); bar.style.width = p+'%'; }
+  }
+
+  function renderItems(items){
+    var root = document.getElementById('results');
+    root.innerHTML = '';
+    items.forEach(function(it, idx){
+      var card = document.createElement('div');
+      card.className = 'item-card';
+      var a = document.createElement('a');
+      a.href = it.original_url || '#';
+      a.target = '_blank';
+      var img = document.createElement('img');
+      img.className = 'item-cover';
+      img.src = it.cover || 'https://dummyimage.com/242x162/18202D/ffffff&text=NEWS';
+      a.appendChild(img);
+      var body = document.createElement('div');
+      body.className = 'item-body';
+      var title = document.createElement('div');
+      title.className = 'item-title';
+      title.textContent = it.title;
+      var meta = document.createElement('div');
+      meta.className = 'item-meta';
+      meta.textContent = it.source || '未知来源';
+      var actions = document.createElement('div');
+      actions.className = 'item-actions';
+      var left = document.createElement('div');
+      var dot = document.createElement('span');
+      dot.className = 'status-dot ' + (it.deep_collected ? 'status-ok' : 'status-pending');
+      left.appendChild(dot);
+      var status = document.createElement('span');
+      status.textContent = it.deep_collected ? '已深度采集' : '未深度采集';
+      left.appendChild(status);
+      var right = document.createElement('div');
+      var checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.style.marginRight = '8px';
+      checkbox.checked = false;
+      checkbox.addEventListener('change', function(){ it.__selected = checkbox.checked; });
+      var btn = document.createElement('button');
+      btn.className = 'layui-btn layui-btn-primary';
+      btn.textContent = '深度采集';
+      btn.addEventListener('click', function(){
+        fetch('/admin/collector/deep', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({item: it})})
+          .then(function(r){ if(!r.ok){ throw new Error('深度采集接口错误 '+ r.status); } return r.json(); })
+          .then(function(resp){
+            var updated = resp.item || {};
+            it.deep_collected = !!updated.deep_collected;
+            dot.className = 'status-dot ' + (it.deep_collected ? 'status-ok' : 'status-pending');
+            status.textContent = it.deep_collected ? '已深度采集' : '未深度采集';
+            it.deep_content = updated.deep_content || '';
+            var kw = document.getElementById('keywordInput').value.trim();
+            return fetch('/admin/collector/save', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({keyword: kw, items: [it]})});
+          })
+          .then(function(r){ if(!r.ok){ throw new Error('保存接口错误 '+ r.status); } return r.json(); })
+          .then(function(resp){ layui.layer.msg('深度采集并已保存 '+ (resp.saved_ids||[]).length +' 条'); })
+          .catch(function(err){ layui.layer.msg(err.message || '深度采集失败'); });
+      });
+      right.appendChild(checkbox);
+      right.appendChild(btn);
+      actions.appendChild(left);
+      actions.appendChild(right);
+      body.appendChild(title);
+      body.appendChild(meta);
+      body.appendChild(actions);
+      card.appendChild(a);
+      card.appendChild(body);
+      root.appendChild(card);
+    });
+    window.__collector_items = items;
+  }
+
+  document.getElementById('collectBtn').addEventListener('click', function(){
+    var kw = document.getElementById('keywordInput').value.trim();
+    var cntRaw = document.getElementById('countInput').value;
+    var cnt = parseInt(cntRaw || '20', 10);
+    var src = document.getElementById('sourceSelect').value;
+    setProgress(5);
+    var t = setInterval(function(){
+      var bar = document.querySelector('#collectProgress .layui-progress-bar');
+      var now = parseInt(bar.getAttribute('lay-percent')||'5');
+      if(now < 90){ setProgress(now+5); } else { clearInterval(t); }
+    }, 300);
+  fetch('/admin/collector/run', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({keyword: kw, max_count: cnt, source: src})})
+      .then(function(r){ if(!r.ok){ throw new Error('采集接口错误 '+ r.status); } return r.json(); })
+      .then(function(resp){ setProgress(100); renderItems(resp.items || []); })
+      .catch(function(err){ setProgress(0); layui.layer.msg(err.message || '采集失败'); });
+  });
+
+  document.getElementById('saveSelectedBtn').addEventListener('click', function(){
+    var items = (window.__collector_items || []).filter(function(it){ return !!it.__selected; });
+    var kw = document.getElementById('keywordInput').value.trim();
+  fetch('/admin/collector/save', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({keyword: kw, items: items})})
+      .then(function(r){ if(!r.ok){ throw new Error('保存接口错误 '+ r.status); } return r.json(); })
+      .then(function(resp){ layui.layer.msg('已保存 '+ (resp.saved_ids||[]).length +' 条'); })
+      .catch(function(err){ layui.layer.msg(err.message || '保存失败'); });
+  });
+});
+</script>
+{% endblock %}

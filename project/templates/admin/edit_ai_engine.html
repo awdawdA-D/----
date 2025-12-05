@@ -1,0 +1,33 @@
+{% extends 'base_layout.html' %}
+{% block content %}
+<style>
+  .content-wrapper{max-width:720px;margin:0 auto}
+  .form-row{margin-bottom:12px}
+  .form-row label{display:block;margin-bottom:4px}
+</style>
+<div class="content-wrapper">
+  <h2>编辑AI引擎</h2>
+  <form method="post">
+    <div class="form-row">
+      <label>服务商</label>
+      <input name="provider" class="layui-input" value="{{ eng.provider }}">
+    </div>
+    <div class="form-row">
+      <label>API地址</label>
+      <input name="api_base" class="layui-input" value="{{ eng.api_base }}">
+    </div>
+    <div class="form-row">
+      <label>API密钥</label>
+      <input name="api_key" class="layui-input" value="{{ eng.api_key }}" placeholder="{{ display_key }}">
+    </div>
+    <div class="form-row">
+      <label>模型名称</label>
+      <input name="model_name" class="layui-input" value="{{ eng.model_name }}">
+    </div>
+    <div class="form-row">
+      <button type="submit" class="layui-btn layui-bg-blue">保存</button>
+      <a href="{{ url_for('admin.ai_engines') }}" class="layui-btn layui-btn-primary">返回</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

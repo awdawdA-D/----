@@ -1,6 +1,7 @@
 import os
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect, text
 from flask_login import LoginManager
 
 db = SQLAlchemy()
@@ -17,13 +18,33 @@ def create_app():
     app.config['SECRET_KEY'] = 'dev'
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(base_dir, 'app.db')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['TEMPLATES_AUTO_RELOAD'] = True
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
     db.init_app(app)
     login_manager.init_app(app)
 
     with app.app_context():
-        from .models import User, Role, SystemSetting
+        from .models import User, Role, SystemSetting, AiEngine
         db.create_all()
+
+        try:
+            insp = inspect(db.engine)
+            cols = [c['name'] if isinstance(c, dict) else c.get('name') for c in insp.get_columns('collection_rules')]
+            if 'site_name' not in cols:
+                with db.engine.begin() as conn:
+                    conn.execute(text('ALTER TABLE collection_rules ADD COLUMN site_name VARCHAR(255)'))
+        except Exception:
+            pass
+
+        try:
+            insp = inspect(db.engine)
+            cols_cr = [c['name'] if isinstance(c, dict) else c.get('name') for c in insp.get_columns('collection_records')]
+            if 'ai_analysis' in cols_cr:
+                with db.engine.begin() as conn:
+                    conn.execute(text('ALTER TABLE collection_records DROP COLUMN ai_analysis'))
+        except Exception:
+            pass
         
         # 初始化基础数据
         if not Role.query.first():
@@ -53,4 +74,3 @@ def create_app():
     app.register_blueprint(admin_bp)
 
     return app
-

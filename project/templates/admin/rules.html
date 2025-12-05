@@ -1,0 +1,117 @@
+{% extends 'base_layout.html' %}
+{% block content %}
+<style>
+  .content-wrapper{max-width:100%;margin:0;padding:0 16px}
+  .form-vert{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+  .form-row{width:100%}
+  .headers-area{font-family: monospace; white-space: pre-wrap; word-break: normal; overflow-wrap: break-word; line-height: 1.6; width:420px}
+  .rules-table{width:100%;table-layout:fixed}
+  .rules-table th,.rules-table td{text-align:left;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Microsoft YaHei",sans-serif;font-size:13px;line-height:1.6}
+  .rules-table code{font-family:SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:12px;background:#f7f7f8;border-radius:4px;padding:2px 4px}
+</style>
+<div class="content-wrapper">
+  <h2>采集规则库</h2>
+  <div style="margin:15px 0; text-align:right;">
+    <button id="addRuleBtn" class="layui-btn layui-bg-blue">添加规则</button>
+  </div>
+
+  <table class="layui-table rules-table">
+    <thead>
+      <tr>
+        <th>站点名称</th>
+        <th>ID</th>
+        <th>站点</th>
+        <th>标题XPath</th>
+        <th>内容XPath</th>
+        <th>Headers</th>
+        <th>创建时间</th>
+        <th style="width:160px">操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rules %}
+      <tr>
+        <td>{{ r.site_name }}</td>
+        <td>{{ r.id }}</td>
+        <td>{{ r.site }}</td>
+        <td>
+          <code style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px; display:inline-block; vertical-align:middle;">{{ (r.title_xpath or '')|truncate(10, True, '') }}</code>
+          {% if r.title_xpath %}
+          <a href="javascript:;" class="layui-btn layui-btn-xs" data-text="{{ r.title_xpath | e }}" onclick="showText(this, '完整 标题XPath')">展开</a>
+          {% endif %}
+        </td>
+        <td>
+          <code style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px; display:inline-block; vertical-align:middle;">{{ (r.content_xpath or '')|truncate(10, True, '') }}</code>
+          {% if r.content_xpath %}
+          <a href="javascript:;" class="layui-btn layui-btn-xs" data-text="{{ r.content_xpath | e }}" onclick="showText(this, '完整 内容XPath')">展开</a>
+          {% endif %}
+        </td>
+        <td>
+          <code style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px; display:inline-block; vertical-align:middle;">{{ (r.headers_json or '')[:10] }}</code>
+          {% if r.headers_json %}
+          <a href="javascript:;" class="layui-btn layui-btn-xs" data-headers="{{ r.headers_json | e }}" onclick="showHeaders(this)">展开</a>
+          {% endif %}
+        </td>
+        <td>{{ r.created_at }}</td>
+        <td>
+          <a href="{{ url_for('admin.edit_rule', id=r.id) }}" class="layui-btn layui-bg-green layui-btn-xs">编辑</a>
+          <a href="{{ url_for('admin.delete_rule', id=r.id) }}" class="layui-btn layui-btn-danger layui-btn-xs" onclick="return confirm('确定删除该规则？')">删除</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+layui.use(['layer','form'], function(){
+  var layer = layui.layer; var form = layui.form; form.render();
+  window.showHeaders = function(el){
+    var full = el.getAttribute('data-headers') || '';
+    function esc(s){ return s.replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
+    layer.open({ title: '完整 Headers', area: ['720px','480px'], content: '<pre style="white-space:pre-wrap;word-break:break-word;line-height:1.6">'+ esc(full) +'</pre>' });
+  };
+  window.showText = function(el, title){
+    var full = el.getAttribute('data-text') || '';
+    function esc(s){ return s.replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
+    layer.open({ title: title, area: ['720px','480px'], content: '<pre style="white-space:pre-wrap;word-break:break-word;line-height:1.6">'+ esc(full) +'</pre>' });
+  };
+  var tpl = ''+
+    '<form id="ruleAddForm" class="layui-form" style="padding:15px;">'+
+    '  <div class="form-vert">'+
+    '    <div class="form-row"><label>站点名称</label><input type="text" name="site_name" placeholder="站点名称，如 新华网" class="layui-input"></div>'+
+    '    <div class="form-row"><label>站点域名</label><input type="text" name="site" required lay-verify="required" placeholder="如 example.com" class="layui-input"></div>'+
+    '    <div class="form-row"><label>标题XPath</label><input type="text" name="title_xpath" placeholder="可选" class="layui-input"></div>'+
+    '    <div class="form-row"><label>详细内容XPath</label><input type="text" name="content_xpath" placeholder="可选" class="layui-input"></div>'+
+    '    <div class="form-row"><label>Request Headers（JSON）</label><textarea name="headers_json" placeholder="可选" class="layui-textarea headers-area" rows="4"></textarea></div>'+
+    '  </div>'+
+    '  <div style="margin-top:10px; text-align:right;">'+
+    '    <button type="button" id="submitRuleBtn" class="layui-btn layui-bg-blue">保存</button>'+
+    '    <button type="button" class="layui-btn layui-btn-primary" onclick="layer.closeAll()">取消</button>'+
+    '  </div>'+
+    '</form>';
+  document.getElementById('addRuleBtn').addEventListener('click', function(){
+    layer.open({ title: '添加规则', area: ['720px','540px'], content: tpl });
+    setTimeout(function(){ form.render(); }, 50);
+    setTimeout(function(){
+      var btn = document.getElementById('submitRuleBtn');
+      if(btn){ btn.addEventListener('click', function(){
+        var f = document.getElementById('ruleAddForm');
+        var site_name = f.site_name.value.trim();
+        var site = f.site.value.trim();
+        var title_xpath = f.title_xpath.value.trim();
+        var content_xpath = f.content_xpath.value.trim();
+        var headers_json = f.headers_json.value.trim();
+        if(!site){ layui.layer.msg('站点不能为空'); return; }
+        var body = new URLSearchParams({site_name: site_name, site: site, title_xpath: title_xpath, content_xpath: content_xpath, headers_json: headers_json});
+        fetch("{{ url_for('admin.add_rule') }}", { method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: body.toString() })
+          .then(function(r){ return r.text(); })
+          .then(function(){ layer.closeAll(); location.reload(); });
+      }); }
+    }, 100);
+  });
+});
+</script>
+{% endblock %}

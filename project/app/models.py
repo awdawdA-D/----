@@ -39,3 +39,34 @@ class SystemSetting(db.Model):
     key = db.Column(db.String(64), primary_key=True)
     value = db.Column(db.Text)
 
+class CollectionRecord(db.Model):
+    __tablename__ = 'collection_records'
+    id = db.Column(db.Integer, primary_key=True)
+    keyword = db.Column(db.String(128))
+    title = db.Column(db.String(512))
+    summary = db.Column(db.Text)
+    source = db.Column(db.String(128))
+    original_url = db.Column(db.String(1024))
+    cover = db.Column(db.String(1024))
+    deep_collected = db.Column(db.Boolean, default=False)
+    deep_content = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class CollectionRule(db.Model):
+    __tablename__ = 'collection_rules'
+    id = db.Column(db.Integer, primary_key=True)
+    site_name = db.Column(db.String(255))
+    site = db.Column(db.String(255), unique=True, nullable=False)
+    title_xpath = db.Column(db.String(1024))
+    content_xpath = db.Column(db.String(2048))
+    headers_json = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class AiEngine(db.Model):
+    __tablename__ = 'ai_engines'
+    id = db.Column(db.Integer, primary_key=True)
+    provider = db.Column(db.String(128))
+    api_base = db.Column(db.Text)
+    api_key = db.Column(db.Text)
+    model_name = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

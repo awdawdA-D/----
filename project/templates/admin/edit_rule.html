@@ -1,0 +1,39 @@
+{% extends 'base_layout.html' %}
+{% block content %}
+<style>
+  .content-wrapper{max-width:620px;margin:0 auto}
+  .form-row{margin-bottom:12px}
+  .form-row label{display:block;margin-bottom:4px}
+  .form-row .layui-input{width:420px}
+  .headers-area{font-family: monospace; white-space: pre-wrap; word-break: normal; overflow-wrap: break-word; line-height: 1.6}
+</style>
+<div class="content-wrapper">
+  <h2>编辑采集规则</h2>
+  <form method="post">
+    <div class="form-row">
+      <label>站点名称</label>
+      <input name="site_name" class="layui-input" value="{{ rule.site_name }}">
+    </div>
+    <div class="form-row">
+      <label>站点</label>
+      <input name="site" class="layui-input" value="{{ rule.site }}">
+    </div>
+    <div class="form-row">
+      <label>标题XPath</label>
+      <input name="title_xpath" class="layui-input" value="{{ rule.title_xpath }}">
+    </div>
+    <div class="form-row">
+      <label>详细内容XPath</label>
+      <input name="content_xpath" class="layui-input" value="{{ rule.content_xpath }}">
+    </div>
+    <div class="form-row">
+      <label>Request Headers（JSON）</label>
+      <textarea name="headers_json" class="layui-textarea headers-area" rows="12">{{ headers_text or rule.headers_json }}</textarea>
+    </div>
+    <div class="form-row">
+      <button type="submit" class="layui-btn layui-bg-blue">保存</button>
+      <a href="{{ url_for('admin.rules') }}" class="layui-btn layui-btn-primary">返回</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
